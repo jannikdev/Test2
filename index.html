@@ -4,17 +4,30 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Keramik Vektor-Kasse (DINOv2)</title>
-  <!-- Transformers.js für das hochpräzise DINOv2 Modell im Browser -->
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 12px; background: #f4f4f7; max-width: 480px; margin: auto; }
+    h2 { margin: 8px 0; font-size: 1.1rem; }
+    .cam-box { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    video { width: 100%; display: block; aspect-ratio: 1/1; object-fit: cover; }
+    .reticle { position: absolute; top: 15%; left: 15%; width: 70%; height: 70%; border: 2px dashed rgba(255,255,255,0.8); border-radius: 8px; box-sizing: border-box; pointer-events: none; }
+    .card { background: white; padding: 14px; border-radius: 10px; margin: 10px 0; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+    input, button { width: 100%; padding: 10px; margin: 6px 0; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
+    input { border: 1px solid #ccc; }
+    button { background: #007aff; color: white; border: none; font-weight: 600; cursor: pointer; }
+    .list-item { display: flex; justify-content: space-between; align-items:center; border-bottom: 1px solid #eee; padding: 6px 0; font-size: 0.9rem; }
+  </style>
+
   <script type="module">
-    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
+    import { AutoProcessor, AutoModel, RawImage, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
     env.allowLocalModels = false;
 
-    let extractor = null;
+    let processor = null;
+    let model = null;
     let database = JSON.parse(localStorage.getItem('ceramic_dinov2_db') || '[]');
     const video = document.getElementById('webcam');
     let isRunning = false;
 
-    // 1. Kamera und DINOv2 Modell initialisieren
+    // 1. Kamera und DINOv2 initialisieren
     async function init() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -22,9 +35,11 @@
         });
         video.srcObject = stream;
         
-        document.getElementById('status').innerText = 'Lade DINOv2 Modell (ca. 80MB beim 1. Start)...';
-        // Feature Extraction mit DINOv2 (Vision-Transformer)
-        extractor = await pipeline('feature-extraction', 'Xenova/dinov2-small');
+        document.getElementById('status').innerText = 'Lade DINOv2 Modell (ca. 80MB beim 1. Mal)...';
+        
+        const modelId = 'Xenova/dinov2-small';
+        processor = await AutoProcessor.from_pretrained(modelId);
+        model = await AutoModel.from_pretrained(modelId);
         
         document.getElementById('status').innerText = 'Bereit zur Erkennung';
         updateList();
@@ -35,27 +50,37 @@
       }
     }
 
-    // 2. Vektor aus Video-Frame erzeugen
+    // 2. Vektor aus Canvas via DINOv2 erzeugen
     async function getEmbedding() {
       const canvas = document.createElement('canvas');
-      canvas.width = 224;
-      canvas.height = 224;
+      canvas.width = video.videoWidth || 400;
+      canvas.height = video.videoHeight || 400;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, 224, 224);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       
-      // Bild an DINOv2 übergeben
-      const output = await extractor(canvas, { pooling: 'mean', normalize: true });
-      return Array.from(output.data);
+      const rawImage = await RawImage.fromCanvas(canvas);
+      const inputs = await processor(rawImage);
+      const outputs = await model(inputs);
+      
+      // CLS-Token (Index 0) repräsentiert das gesamte Bild-Embedding
+      const lastHiddenState = outputs.last_hidden_state;
+      const [batch, seqLen, hiddenDim] = lastHiddenState.dims;
+      const data = lastHiddenState.data;
+      
+      // Extrahiere die ersten 384 Werte (CLS Token) und normalisiere
+      const clsVec = Array.from(data.slice(0, hiddenDim));
+      let norm = 0;
+      for (let i = 0; i < clsVec.length; i++) norm += clsVec[i] * clsVec[i];
+      norm = Math.sqrt(norm);
+      return clsVec.map(v => v / (norm || 1));
     }
 
     function cosineSimilarity(vecA, vecB) {
-      let dot = 0, normA = 0, normB = 0;
+      let dot = 0;
       for (let i = 0; i < vecA.length; i++) {
         dot += vecA[i] * vecB[i];
-        normA += vecA[i] * vecA[i];
-        normB += vecB[i] * vecB[i];
       }
-      return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+      return dot;
     }
 
     // 3. Scan-Prozess: 5 Frames aufnehmen
@@ -63,7 +88,7 @@
       const name = document.getElementById('obj-name').value.trim();
       const price = document.getElementById('obj-price').value.trim();
       if (!name || !price) return alert('Bitte Name und Preis eingeben!');
-      if (!extractor) return alert('Modell lädt noch...');
+      if (!model) return alert('Modell lädt noch...');
 
       const btn = document.getElementById('btn-scan');
       const progress = document.getElementById('scan-progress');
@@ -71,24 +96,24 @@
 
       const embeddings = [];
       for (let i = 1; i <= 5; i++) {
-        progress.innerText = `Scanne Winkel ${i}/5... Objekt leicht drehen`;
+        progress.innerText = `Scanne Frame ${i}/5... Objekt leicht drehen`;
         embeddings.push(await getEmbedding());
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 250));
       }
 
       database.push({ name, price, embeddings });
       localStorage.setItem('ceramic_dinov2_db', JSON.stringify(database));
       
-      progress.innerText = 'Erfolgreich gespeichert!';
+      progress.innerText = 'Gespeichert!';
       document.getElementById('obj-name').value = '';
       document.getElementById('obj-price').value = '';
       btn.disabled = false;
       updateList();
     }
 
-    // 4. Live-Erkennungsschleife (Top-3 Vorschläge)
+    // 4. Live-Erkennungsschleife
     async function predictLoop() {
-      if (database.length > 0 && extractor && isRunning) {
+      if (database.length > 0 && model && isRunning) {
         try {
           const currentVec = await getEmbedding();
           let scores = [];
@@ -102,14 +127,13 @@
             scores.push({ item, sim: maxItemSim });
           }
 
-          // Nach Ähnlichkeit sortieren und Top 3 holen
           scores.sort((a, b) => b.sim - a.sim);
           renderResults(scores.slice(0, 3));
         } catch (e) {
           console.error(e);
         }
       }
-      setTimeout(predictLoop, 400); // alle 400ms aktualisieren
+      setTimeout(predictLoop, 500);
     }
 
     function renderResults(topResults) {
@@ -120,14 +144,14 @@
       }
 
       container.innerHTML = topResults.map((res, index) => {
-        const percent = Math.round(res.sim * 100);
-        const bg = index === 0 && percent > 70 ? '#e6f4ea' : '#fff';
-        const color = index === 0 && percent > 70 ? '#137333' : '#333';
+        const percent = Math.max(0, Math.round(res.sim * 100));
+        const bg = index === 0 && percent > 75 ? '#e6f4ea' : '#fff';
+        const color = index === 0 && percent > 75 ? '#137333' : '#333';
         return `
           <div style="background: ${bg}; border: 1px solid #ddd; padding: 10px; margin: 6px 0; border-radius: 8px; display:flex; justify-content:space-between; align-items:center;">
             <div>
               <div style="font-weight:bold; color:${color};">${res.item.name}</div>
-              <div style="font-size:0.85rem; color:#555;">${res.item.price} € (${percent}%)</div>
+              <div style="font-size:0.85rem; color:#555;">${res.item.price} € (${percent}% Match)</div>
             </div>
             <button onclick="alert('Kasse gebucht: ${res.item.name} (${res.item.price} €)')" style="background:#007aff; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; width:auto; margin:0;">Buchen</button>
           </div>
@@ -154,18 +178,6 @@
 
     window.onload = init;
   </script>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 12px; background: #f4f4f7; max-width: 480px; margin: auto; }
-    h2 { margin: 8px 0; font-size: 1.1rem; }
-    .cam-box { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-    video { width: 100%; display: block; aspect-ratio: 1/1; object-fit: cover; }
-    .reticle { position: absolute; top: 15%; left: 15%; width: 70%; height: 70%; border: 2px dashed rgba(255,255,255,0.8); border-radius: 8px; box-sizing: border-box; pointer-events: none; }
-    .card { background: white; padding: 14px; border-radius: 10px; margin: 10px 0; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
-    input, button { width: 100%; padding: 10px; margin: 6px 0; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
-    input { border: 1px solid #ccc; }
-    button { background: #007aff; color: white; border: none; font-weight: 600; cursor: pointer; }
-    .list-item { display: flex; justify-content: space-between; align-items:center; border-bottom: 1px solid #eee; padding: 6px 0; font-size: 0.9rem; }
-  </style>
 </head>
 <body>
 
@@ -181,9 +193,9 @@
 
   <div class="card">
     <h2>Keramik anlernen</h2>
-    <input type="text" id="obj-name" placeholder="Name (z.B. Teller gebogen groß)">
+    <input type="text" id="obj-name" placeholder="Name (z.B. Teller gebogen)">
     <input type="number" id="obj-price" step="0.50" placeholder="Preis in € (z.B. 22.00)">
-    <button id="btn-scan" onclick="startScanRecord()">Kurz-Scan starten (5 Winkel)</button>
+    <button id="btn-scan" onclick="startScanRecord()">Kurz-Scan starten (5 Frames)</button>
     <div id="scan-progress" style="font-size: 0.85rem; color: #666; margin-top:4px;"></div>
   </div>
 
@@ -194,3 +206,4 @@
 
 </body>
 </html>
+
