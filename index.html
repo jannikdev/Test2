@@ -282,130 +282,9 @@
     const detectionCanvas = document.getElementById('detection-canvas');
     const ctxDetection = detectionCanvas.getContext('2d');
 
-    // --- WebWorker: YOLOv8 + CLIP (Classic Worker für Mobile Safari / file:// Kompatibilität) ---
-    const workerCode = `
-      self.postMessage({ type: 'debug', msg: 'Worker initialisiert...' });
-      
-      try {
-        importScripts('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
-        self.postMessage({ type: 'debug', msg: 'Library geladen!' });
-      } catch(err) {
-        self.postMessage({ type: 'error', error: 'Import fehlgeschlagen: ' + err.message });
-      }
-
-      const { pipeline, env } = transformers;
-      env.allowLocalModels = false;
-      env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/';
-      env.backends.onnx.wasm.numThreads = 1; // WICHTIG für iOS Safari (kein SharedArrayBuffer auf GitHub Pages)
-      
-      let yoloDetector = null;
-      let clipExtractor = null;
-
-      self.onmessage = async (e) => {
-        if (e.data.type === 'init') {
-          try {
-            self.postMessage({ type: 'debug', msg: 'Lade YOLO (Objekterkennung)...' });
-            yoloDetector = await pipeline('object-detection', 'Xenova/yolov8n', {
-                progress_callback: (p) => self.postMessage({ type: 'progress', data: { model: 'YOLO', ...p } })
-            });
-            
-            self.postMessage({ type: 'debug', msg: 'Lade CLIP (Vektorsuche)...' });
-            clipExtractor = await pipeline('feature-extraction', 'Xenova/clip-vit-base-patch32', {
-                progress_callback: (p) => self.postMessage({ type: 'progress', data: { model: 'CLIP', ...p } })
-            });
-            
-            self.postMessage({ type: 'ready' });
-          } catch (err) {
-            self.postMessage({ type: 'error', error: err.message });
-          }
-        } 
-        else if (e.data.type === 'detect') {
-          if (!yoloDetector) return;
-          try {
-            const { imageData, reqId } = e.data;
-            const output = await yoloDetector(imageData, { threshold: 0.25 });
-            self.postMessage({ type: 'detect_result', boxes: output, reqId });
-          } catch(err) {
-             self.postMessage({ type: 'detect_result', boxes: [], reqId });
-          }
-        }
-        else if (e.data.type === 'extract') {
-          if (!clipExtractor) return;
-          try {
-            const { imageData, reqId } = e.data;
-            const output = await clipExtractor(imageData, { pooling: 'mean', normalize: true });
-            self.postMessage({ type: 'extract_result', vec: Array.from(output.data), reqId });
-          } catch(err) {
-             self.postMessage({ type: 'error', error: err.message });
-          }
-        }
-      };
-    `;
-    const blob = new Blob([workerCode], { type: 'application/javascript' });
-    const worker = new Worker(URL.createObjectURL(blob)); // Classic Worker (ohne type: module)
-
-    worker.onerror = (err) => {
-      console.error('Globale Worker Exception:', err);
-      document.getElementById('loading-text').innerHTML = `<span class="text-rose-400 font-bold">Kritischer Fehler:</span> KI-Engine konnte nicht starten.`;
-      document.getElementById('loading-spinner').className = 'absolute inset-0 rounded-full border-4 border-rose-500 border-t-rose-200';
-    };
-
+    let worker = null;
     let reqCounter = 0;
     const pendingRequests = new Map();
-
-    worker.onmessage = (e) => {
-      const msg = e.data;
-      if (msg.type === 'progress') {
-         const data = msg.data;
-         if (data.status === 'progress' || data.status === 'downloading') {
-             const percent = Math.round(data.progress || 0);
-             document.getElementById('loading-text').innerHTML = `Lade <strong>${data.model}</strong>...`;
-             document.getElementById('loading-file').innerText = data.file || 'weights';
-             document.getElementById('loading-percent').innerText = `${percent}%`;
-             document.getElementById('loading-progress-bar').style.width = `${percent}%`;
-         } else if (data.status === 'initiate') {
-             document.getElementById('loading-text').innerHTML = `Starte Download: <strong>${data.model}</strong>`;
-             document.getElementById('loading-file').innerText = data.file || '...';
-             document.getElementById('loading-progress-bar').style.width = `0%`;
-             document.getElementById('loading-percent').innerText = `0%`;
-         } else if (data.status === 'done') {
-             document.getElementById('loading-progress-bar').style.width = `100%`;
-             document.getElementById('loading-percent').innerText = `100%`;
-         }
-      } else if (msg.type === 'debug') {
-        document.getElementById('loading-file').innerText = msg.msg;
-      } else if (msg.type === 'ready') {
-        isWorkerReady = true;
-        
-        // Hide Loading Overlay
-        const overlay = document.getElementById('loading-overlay');
-        overlay.style.opacity = '0';
-        setTimeout(() => overlay.remove(), 700);
-
-        document.getElementById('app-status').innerText = 'Live Tracking Aktiv';
-        document.getElementById('app-status').className = 'text-[11px] font-medium text-cyan-400';
-        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-cyan-500 shadow-[0_0_12px_rgba(34,211,238,0.8)]';
-        updateActionButtons();
-        
-        // Starte Live-Detection erst jetzt
-        if (video.readyState >= 2) {
-           requestAnimationFrame(startDetectionLoop);
-        }
-      } else if (msg.type === 'error') {
-        console.error('Worker Error:', msg.error);
-        document.getElementById('loading-text').innerHTML = `<span class="text-rose-400 font-bold">Fehler:</span> ${msg.error}`;
-        document.getElementById('loading-spinner').className = 'absolute inset-0 rounded-full border-4 border-rose-500 border-t-rose-200';
-        
-        document.getElementById('app-status').innerText = 'Initialisierungs-Fehler';
-        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-rose-500 shadow-lg shadow-rose-500/50';
-      } else if (msg.type === 'detect_result' || msg.type === 'extract_result') {
-        const resolve = pendingRequests.get(msg.reqId);
-        if (resolve) {
-          resolve(msg.boxes || msg.vec);
-          pendingRequests.delete(msg.reqId);
-        }
-      }
-    };
 
     // --- Live Object Detection Loop ---
     let isDetecting = false;
@@ -534,13 +413,136 @@
         database = await getItems();
         updateUIState();
         
+        const errText = document.getElementById('loading-text');
+        
+        // Hole die Kamera zuerst, damit der User nicht warten muss
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment', width: { ideal: 720 }, height: { ideal: 720 } }
         });
         video.srcObject = stream;
         video.onloadedmetadata = () => {
           video.style.opacity = '1';
-          // StartDetectionLoop wird erst in msg.type === 'ready' aufgerufen!
+        };
+
+        // --- Fetch & Inject WebWorker ---
+        errText.innerHTML = `Lade KI-Engine (CDN)...`;
+        const cdnResponse = await fetch('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js');
+        if (!cdnResponse.ok) throw new Error('CDN konnte nicht geladen werden.');
+        const libCode = await cdnResponse.text();
+        
+        const workerCode = libCode + `
+          self.postMessage({ type: 'debug', msg: 'Worker Engine gestartet...' });
+          
+          const { pipeline, env } = self.transformers;
+          env.allowLocalModels = false;
+          env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/';
+          env.backends.onnx.wasm.numThreads = 1;
+          
+          let yoloDetector = null;
+          let clipExtractor = null;
+
+          self.onmessage = async (e) => {
+            if (e.data.type === 'init') {
+              try {
+                self.postMessage({ type: 'debug', msg: 'Lade YOLO (Objekterkennung)...' });
+                yoloDetector = await pipeline('object-detection', 'Xenova/yolov8n', {
+                    progress_callback: (p) => self.postMessage({ type: 'progress', data: { model: 'YOLO', ...p } })
+                });
+                
+                self.postMessage({ type: 'debug', msg: 'Lade CLIP (Vektorsuche)...' });
+                clipExtractor = await pipeline('feature-extraction', 'Xenova/clip-vit-base-patch32', {
+                    progress_callback: (p) => self.postMessage({ type: 'progress', data: { model: 'CLIP', ...p } })
+                });
+                
+                self.postMessage({ type: 'ready' });
+              } catch (err) {
+                self.postMessage({ type: 'error', error: err.message });
+              }
+            } 
+            else if (e.data.type === 'detect') {
+              if (!yoloDetector) return;
+              try {
+                const { imageData, reqId } = e.data;
+                const output = await yoloDetector(imageData, { threshold: 0.25 });
+                self.postMessage({ type: 'detect_result', boxes: output, reqId });
+              } catch(err) {
+                 self.postMessage({ type: 'detect_result', boxes: [], reqId });
+              }
+            }
+            else if (e.data.type === 'extract') {
+              if (!clipExtractor) return;
+              try {
+                const { imageData, reqId } = e.data;
+                const output = await clipExtractor(imageData, { pooling: 'mean', normalize: true });
+                self.postMessage({ type: 'extract_result', vec: Array.from(output.data), reqId });
+              } catch(err) {
+                 self.postMessage({ type: 'error', error: err.message });
+              }
+            }
+          };
+        `;
+        
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        worker = new Worker(URL.createObjectURL(blob));
+
+        worker.onerror = (err) => {
+          console.error('Globale Worker Exception:', err);
+          let msg = err.message || "Unbekannter Absturz im Hintergrund";
+          if(errText) errText.innerHTML = `<span class="text-rose-400 font-bold">Kritischer Fehler:</span> ${msg}`;
+          document.getElementById('loading-spinner').className = 'absolute inset-0 rounded-full border-4 border-rose-500 border-t-rose-200';
+        };
+
+        worker.onmessage = (e) => {
+          const msg = e.data;
+          if (msg.type === 'progress') {
+             const data = msg.data;
+             if (data.status === 'progress' || data.status === 'downloading') {
+                 const percent = Math.round(data.progress || 0);
+                 document.getElementById('loading-text').innerHTML = `Lade <strong>${data.model}</strong>...`;
+                 document.getElementById('loading-file').innerText = data.file || 'weights';
+                 document.getElementById('loading-percent').innerText = `${percent}%`;
+                 document.getElementById('loading-progress-bar').style.width = `${percent}%`;
+             } else if (data.status === 'initiate') {
+                 document.getElementById('loading-text').innerHTML = `Starte Download: <strong>${data.model}</strong>`;
+                 document.getElementById('loading-file').innerText = data.file || '...';
+                 document.getElementById('loading-progress-bar').style.width = `0%`;
+                 document.getElementById('loading-percent').innerText = `0%`;
+             } else if (data.status === 'done') {
+                 document.getElementById('loading-progress-bar').style.width = `100%`;
+                 document.getElementById('loading-percent').innerText = `100%`;
+             }
+          } else if (msg.type === 'debug') {
+            document.getElementById('loading-file').innerText = msg.msg;
+          } else if (msg.type === 'ready') {
+            isWorkerReady = true;
+            
+            // Hide Loading Overlay
+            const overlay = document.getElementById('loading-overlay');
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.remove(), 700);
+
+            document.getElementById('app-status').innerText = 'Live Tracking Aktiv';
+            document.getElementById('app-status').className = 'text-[11px] font-medium text-cyan-400';
+            document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-cyan-500 shadow-[0_0_12px_rgba(34,211,238,0.8)]';
+            updateActionButtons();
+            
+            if (video.readyState >= 2) {
+               requestAnimationFrame(startDetectionLoop);
+            }
+          } else if (msg.type === 'error') {
+            console.error('Worker Error:', msg.error);
+            document.getElementById('loading-text').innerHTML = `<span class="text-rose-400 font-bold">Fehler:</span> ${msg.error}`;
+            document.getElementById('loading-spinner').className = 'absolute inset-0 rounded-full border-4 border-rose-500 border-t-rose-200';
+            
+            document.getElementById('app-status').innerText = 'Initialisierungs-Fehler';
+            document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-rose-500 shadow-lg shadow-rose-500/50';
+          } else if (msg.type === 'detect_result' || msg.type === 'extract_result') {
+            const resolve = pendingRequests.get(msg.reqId);
+            if (resolve) {
+              resolve(msg.boxes || msg.vec);
+              pendingRequests.delete(msg.reqId);
+            }
+          }
         };
         
         worker.postMessage({ type: 'init' });
@@ -548,8 +550,14 @@
       } catch (err) {
         console.error(err);
         const errText = document.getElementById('loading-text');
-        if(errText) errText.innerHTML = `<span class="text-rose-400 font-bold">Kamera blockiert:</span> Bitte erlaube den Kamera-Zugriff.`;
-        document.getElementById('app-status').innerText = 'Kamera blockiert';
+        let errMsg = err.message || "Unbekannter Fehler";
+        
+        if (err.name === 'NotAllowedError') {
+          errMsg = 'Bitte erlaube den Kamera-Zugriff in den Einstellungen.';
+        }
+        
+        if(errText) errText.innerHTML = `<span class="text-rose-400 font-bold">Fehler:</span> ${errMsg}`;
+        document.getElementById('app-status').innerText = 'Kamera / Init blockiert';
         document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-rose-500 shadow-lg shadow-rose-500/50';
       }
     }
