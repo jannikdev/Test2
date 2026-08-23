@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Keramik Kasse Pro (CLIP Engine)</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; user-select: none; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-[100dvh] flex flex-col overflow-hidden">
+
+  <!-- TOP HEADER -->
+  <header class="px-5 py-4 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/80 flex justify-between items-center z-20 shrink-0">
+    <div class="flex items-center space-x-3">
+      <div class="w-2.5 h-2.5 rounded-full bg-amber-500 transition-all duration-500 shadow-lg shadow-amber-500/50" id="status-dot"></div>
+      <div class="flex flex-col">
+        <h1 class="font-semibold text-xs tracking-wide uppercase text-slate-400">CLIP Vision Engine</h1>
+        <span class="text-xs font-medium text-slate-200" id="app-status">Lade CLIP-Modell...</span>
+      </div>
+    </div>
+    <div class="px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/50 text-xs font-medium text-slate-300 flex items-center space-x-1.5 shadow-sm">
+      <i data-lucide="database" class="w-3.5 h-3.5 text-blue-400"></i>
+      <span id="db-badge">0 Artikel</span>
+    </div>
+  </header>
+
+  <!-- MAIN VIEWPORT -->
+  <main class="flex-1 relative overflow-y-auto hide-scrollbar pb-28">
+
+    <!-- UNIVERSAL CAMERA & FOCUS VIEW (Für Kasse UND Anlernen genutzt!) -->
+    <section id="view-camera" class="p-4 space-y-4 max-w-md mx-auto">
+      <div class="relative w-full aspect-square rounded-3xl overflow-hidden bg-slate-900 border border-slate-800/80 shadow-2xl group">
+        <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
+        
+        <!-- Dauerhafter Fokus-Rahmen (Center Crop) -->
+        <div class="absolute inset-0 border-[40px] border-slate-950/50 pointer-events-none flex items-center justify-center">
+          <div id="reticle-box" class="w-full h-full border-2 border-dashed border-blue-400/80 rounded-2xl flex items-center justify-center transition-all duration-300"></div>
+        </div>
+
+        <div class="absolute bottom-4 left-0 right-0 text-center pointer-events-none">
+          <span class="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full bg-slate-950/80 backdrop-blur-md text-xs font-medium text-slate-200 border border-slate-800 shadow-lg">
+            <i data-lucide="scan" class="w-3.5 h-3.5 text-blue-400"></i>
+            <span id="camera-hint">Keramik im blauen Rahmen zentrieren</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- DYNAMISCHER AKTIONSAKTION-BUTTON (Ändert sich je nach Modus) -->
+      <div id="action-container" class="space-y-3">
+        <!-- Wird per JS befüllt (Entweder Kassen-Scan oder Anlern-Auslöser) -->
+      </div>
+
+      <!-- Ergebnisse oder Status -->
+      <div id="results-container" class="space-y-2"></div>
+    </section>
+
+    <!-- VIEW 2: ARTIKEL ANLERNEN (Daten Eingabe) -->
+    <section id="view-add" class="p-4 space-y-4 max-w-md mx-auto hidden">
+      <div class="bg-slate-900/80 backdrop-blur-xl border border-slate-800/80 p-5 rounded-3xl space-y-5 shadow-2xl">
+        <div class="flex items-center space-x-2.5 pb-2 border-b border-slate-800">
+          <div class="p-2 rounded-xl bg-blue-500/10 text-blue-400">
+            <i data-lucide="plus-circle" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="font-semibold text-sm text-white">Neuen Artikel anlegen</h2>
+            <p class="text-xs text-slate-400">Name, Preis & Aufnahmen verwalten</p>
+          </div>
+        </div>
+        
+        <div class="space-y-3.5">
+          <div>
+            <label class="text-xs font-medium text-slate-400 mb-1.5 block">Artikelbezeichnung</label>
+            <input type="text" id="input-name" placeholder="z.B. Tasse Henkel blau" 
+              class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-sm transition-colors">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-400 mb-1.5 block">Preis in €</label>
+            <input type="number" id="input-price" step="0.50" placeholder="19.00" 
+              class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-sm transition-colors">
+          </div>
+        </div>
+
+        <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-2">
+          <div class="flex justify-between items-center text-sm">
+            <span class="text-slate-400 text-xs">Erfasste Winkel-Fotos:</span>
+            <span id="shot-counter" class="font-bold text-blue-400 text-xs bg-blue-950/80 border border-blue-900/50 px-2.5 py-1 rounded-lg">0</span>
+          </div>
+          <p class="text-[11px] text-slate-500">Wechsle in den Kamera-Tab, halte das Objekt in den Rahmen und tippe auf "Foto aufnehmen".</p>
+        </div>
+
+        <button onclick="saveNewItem()" id="btn-save-item" disabled
+          class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] transition-all font-semibold text-white shadow-lg shadow-emerald-600/25 disabled:opacity-40 disabled:pointer-events-none text-sm flex items-center justify-center space-x-2">
+          <i data-lucide="check" class="w-4 h-4"></i>
+          <span>Artikel in Datenbank speichern</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW 3: INVENTAR -->
+    <section id="view-inventory" class="p-4 space-y-3 max-w-md mx-auto hidden">
+      <div class="flex justify-between items-center px-1 mb-1">
+        <h2 class="font-semibold text-xs uppercase tracking-wider text-slate-400 flex items-center space-x-1.5">
+          <i data-lucide="box" class="w-3.5 h-3.5"></i>
+          <span>Sortiment & Datenbank</span>
+        </h2>
+        <button onclick="clearDatabase()" class="text-xs text-rose-400 hover:underline font-medium">Alle löschen</button>
+      </div>
+      <div id="inventory-list" class="space-y-2"></div>
+    </section>
+
+  </main>
+
+  <!-- FIXED BOTTOM NAVIGATION -->
+  <nav class="absolute bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800/80 px-6 py-2.5 flex justify-around items-center z-30 shadow-2xl">
+    <button onclick="switchTab('scanner')" id="nav-scanner" class="flex flex-col items-center space-y-1 text-blue-500 transition-colors p-1">
+      <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+      <span class="text-[10px] font-semibold tracking-wide">Kasse</span>
+    </button>
+    <button onclick="switchTab('add')" id="nav-add" class="flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200 transition-colors p-1">
+      <i data-lucide="plus-circle" class="w-5 h-5"></i>
+      <span class="text-[10px] font-semibold tracking-wide">Anlernen</span>
+    </button>
+    <button onclick="switchTab('inventory')" id="nav-inventory" class="flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200 transition-colors p-1">
+      <i data-lucide="layers" class="w-5 h-5"></i>
+      <span class="text-[10px] font-semibold tracking-wide">Inventar</span>
+    </button>
+  </nav>
+
+  <!-- APP LOGIC -->
+  <script type="module">
+    import { animate } from "https://cdn.jsdelivr.net/npm/motion@latest/+esm";
+    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
+
+    env.allowLocalModels = false;
+
+    let extractor = null;
+    let database = JSON.parse(localStorage.getItem('ceramic_clip_v3_db') || '[]');
+    let currentShots = [];
+    let currentMode = 'scanner'; // 'scanner' oder 'training'
+    const video = document.getElementById('webcam');
+
+    async function init() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 640 } }
+        });
+        video.srcObject = stream;
+
+        document.getElementById('app-status').innerText = 'Lade CLIP Vision Modell...';
+        extractor = await pipeline('feature-extraction', 'Xenova/clip-vit-base-patch32');
+
+        document.getElementById('app-status').innerText = 'System betriebsbereit (CLIP)';
+        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50';
+        
+        updateActionButtons();
+        updateUIState();
+      } catch (err) {
+        console.error(err);
+        document.getElementById('app-status').innerText = 'Modell-Fehler';
+        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+        alert('Fehler beim Laden von CLIP: ' + err.message);
+      }
+    }
+
+    window.switchTab = function(tab) {
+      const isCameraTab = (tab === 'scanner' || tab === 'add');
+      
+      // Ansichten steuern
+      document.getElementById('view-camera').classList.toggle('hidden', !isCameraTab);
+      document.getElementById('view-add').classList.toggle('hidden', tab !== 'add');
+      document.getElementById('view-inventory').classList.toggle('hidden', tab !== 'inventory');
+
+      // Modus umschalten
+      currentMode = (tab === 'add') ? 'training' : 'scanner';
+      updateActionButtons();
+
+      // Nav-Farben anpassen
+      ['scanner', 'add', 'inventory'].forEach(t => {
+        const nav = document.getElementById(`nav-${t}`);
+        if (t === tab || (tab === 'add' && t === 'scanner')) { // Highlight Kasse/Anlernen Logik
+          nav.className = 'flex flex-col items-center space-y-1 text-blue-500 transition-colors p-1';
+        } else {
+          nav.className = 'flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200 transition-colors p-1';
+        }
+      });
+
+      if(tab === 'inventory') renderInventory();
+      lucide.createIcons();
+    }
+
+    function updateActionButtons() {
+      const container = document.getElementById('action-container');
+      const hint = document.getElementById('camera-hint');
+
+      if (currentMode === 'scanner') {
+        hint.innerText = "Keramik im blauen Rahmen zentrieren";
+        container.innerHTML = `
+          <button onclick="performScan()" id="btn-scan" class="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] transition-all font-semibold text-white shadow-xl shadow-blue-600/25 flex items-center justify-center space-x-2 text-sm">
+            <i data-lucide="search" class="w-4 h-4"></i>
+            <span>Präzise mit CLIP scannen</span>
+          </button>
+          <div id="results-container" class="space-y-2">
+            <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 text-center text-slate-400 text-sm flex flex-col items-center justify-center space-y-2">
+              <i data-lucide="info" class="w-5 h-5 text-slate-500"></i>
+              <span>Bereit für Kassiervorgang</span>
+            </div>
+          </div>
+        `;
+      } else {
+        hint.innerText = "Objekt für Anlernen im Rahmen halten";
+        container.innerHTML = `
+          <button onclick="captureTrainingShot()" id="btn-shoot" class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] transition-all font-semibold text-white shadow-xl shadow-emerald-600/25 flex items-center justify-center space-x-2 text-sm">
+            <i data-lucide="camera" class="w-4 h-4"></i>
+            <span>📸 Foto aus Rahmen aufnehmen (${currentShots.length} erfasst)</span>
+          </button>
+          <button onclick="switchTab('add')" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center space-x-2">
+            <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+            <span>Namen & Preis eingeben / Speichern (${currentShots.length} Fotos bereit)</span>
+          </button>
+        `;
+      }
+      lucide.createIcons();
+    }
+
+    // Zentrum des Videos ausschneiden und als stabiles Bild an CLIP übergeben
+    async function getClipEmbedding() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 224;
+      canvas.height = 224;
+      const ctx = canvas.getContext('2d');
+
+      const vWidth = video.videoWidth || 640;
+      const vHeight = video.videoHeight || 640;
+      
+      const cropSize = Math.floor(Math.min(vWidth, vHeight) * 0.6);
+      const startX = Math.floor((vWidth - cropSize) / 2);
+      const startY = Math.floor((vHeight - cropSize) / 2);
+
+      ctx.drawImage(video, startX, startY, cropSize, cropSize, 0, 0, 224, 224);
+
+      // Robustere Konvertierung direkt über den Canvas-Blob / Image-Daten für Transformers.js
+      const output = await extractor(canvas, { pooling: 'mean', normalize: true });
+      return Array.from(output.data);
+    }
+
+    window.captureTrainingShot = async function() {
+      if (!extractor) return;
+      const btn = document.getElementById('btn-shoot');
+      if(btn) btn.innerHTML = '<span>Verarbeite Foto...</span>';
+
+      try {
+        const vec = await getClipEmbedding();
+        currentShots.push(vec);
+        
+        document.getElementById('shot-counter').innerText = currentShots.length;
+        document.getElementById('btn-save-item').disabled = currentShots.length === 0;
+        
+        const box = document.getElementById('reticle-box');
+        box.className = 'w-full h-full border-2 border-emerald-400 bg-emerald-500/10 rounded-2xl flex items-center justify-center transition-all duration-300';
+        setTimeout(() => {
+          box.className = 'w-full h-full border-2 border-dashed border-blue-400/80 rounded-2xl flex items-center justify-center transition-all duration-300';
+        }, 400);
+
+        if(navigator.vibrate) navigator.vibrate(30);
+        updateActionButtons();
+      } catch(e) {
+        console.error(e);
+        alert('Fehler bei der Vektor-Extraktion: ' + e.message);
+        updateActionButtons();
+      }
+    };
+
+    window.saveNewItem = function() {
+      const name = document.getElementById('input-name').value.trim();
+      const price = document.getElementById('input-price').value.trim();
+
+      if (!name || !price) return alert('Bitte Name und Preis eingeben!');
+      if (currentShots.length === 0) return alert('Bitte zuerst im Kamera-Tab mindestens 1 Foto aufnehmen!');
+
+      database.push({ name, price, embeddings: currentShots });
+      localStorage.setItem('ceramic_clip_v3_db', JSON.stringify(database));
+
+      currentShots = [];
+      document.getElementById('input-name').value = '';
+      document.getElementById('input-price').value = '';
+      document.getElementById('shot-counter').innerText = '0';
+      document.getElementById('btn-save-item').disabled = true;
+      
+      updateUIState();
+      switchTab('scanner');
+    };
+
+    window.performScan = async function() {
+      if (database.length === 0) {
+        alert('Bitte zuerst im Tab "Anlernen" Artikel hinterlegen!');
+        switchTab('add');
+        return;
+      }
+
+      const container = document.getElementById('results-container');
+      container.innerHTML = `
+        <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800 text-center text-slate-400 text-sm flex items-center justify-center space-x-2.5">
+          <svg class="animate-spin h-4 w-4 text-blue-500" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+          <span>CLIP analysiert Fokus-Bereich...</span>
+        </div>
+      `;
+
+      try {
+        const currentVec = await getClipEmbedding();
+        let scores = [];
+
+        for (const item of database) {
+          let maxSim = -1;
+          for (const vec of item.embeddings) {
+            let dot = 0;
+            for (let i = 0; i < currentVec.length; i++) {
+              dot += currentVec[i] * vec[i];
+            }
+            if (dot > maxSim) maxSim = dot;
+          }
+          scores.push({ item, sim: maxSim });
+        }
+
+        scores.sort((a, b) => b.sim - a.sim);
+        const top3 = scores.slice(0, 3);
+
+        container.innerHTML = '';
+        top3.forEach((res, index) => {
+          let percent = Math.round(res.sim * 100);
+          const isBest = index === 0 && percent >= 70;
+          
+          const card = document.createElement('div');
+          card.className = `p-4 rounded-2xl border transition-all flex justify-between items-center ${isBest ? 'bg-emerald-950/40 border-emerald-500/60 shadow-lg shadow-emerald-950/30' : 'bg-slate-900 border-slate-800'}`;
+          card.innerHTML = `
+            <div class="flex items-center space-x-3">
+              <div class="p-2.5 rounded-xl ${isBest ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-400'}">
+                <i data-lucide="${isBest ? 'check-circle-2' : 'coffee'}" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <div class="font-bold text-white text-sm">${res.item.name}</div>
+                <div class="text-xs text-slate-400 mt-0.5"><span class="text-white font-semibold">${res.item.price} €</span> &bull; <span class="${isBest ? 'text-emerald-400 font-medium' : 'text-slate-400'}">${percent}% Match</span></div>
+              </div>
+            </div>
+            <button onclick="bookItem('${res.item.name}', '${res.item.price}')" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-semibold shadow-md flex items-center space-x-1">
+              <i data-lucide="shopping-bag" class="w-3.5 h-3.5"></i>
+              <span>Buchen</span>
+            </button>
+          `;
+          container.appendChild(card);
+          animate(card, { opacity: [0, 1], y: [8, 0] }, { duration: 0.25, delay: index * 0.04 });
+        });
+        
+        lucide.createIcons();
+      } catch (err) {
+        console.error(err);
+        container.innerHTML = `<div class="p-6 rounded-2xl bg-slate-900 text-rose-400 text-sm text-center">Scan fehlgeschlagen: ${err.message}</div>`;
+      }
+    };
+
+    window.bookItem = function(name, price) {
+      if(navigator.vibrate) navigator.vibrate(50);
+      alert(`Erfolgreich gebucht:\n${name} — ${price} €`);
+    };
+
+    function renderInventory() {
+      const list = document.getElementById('inventory-list');
+      if (database.length === 0) {
+        list.innerHTML = `
+          <div class="p-8 rounded-2xl bg-slate-900 border border-slate-800 text-center text-slate-400 text-sm flex flex-col items-center justify-center space-y-2">
+            <i data-lucide="folder-open" class="w-6 h-6 text-slate-600"></i>
+            <span>Keine Artikel vorhanden</span>
+          </div>`;
+        lucide.createIcons();
+        return;
+      }
+      list.innerHTML = database.map((item, idx) => `
+        <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex justify-between items-center shadow-sm">
+          <div class="flex items-center space-x-3">
+            <div class="p-2 rounded-xl bg-slate-800 text-slate-300">
+              <i data-lucide="package" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <div class="font-semibold text-white text-sm">${item.name}</div>
+              <div class="text-xs text-slate-400 mt-0.5"><span class="text-slate-200 font-medium">${item.price} €</span> &bull; ${item.embeddings.length} Winkel</div>
+            </div>
+          </div>
+          <button onclick="deleteItem(${idx})" class="p-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-medium border border-rose-500/20 transition-colors">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    };
+
+    window.deleteItem = function(idx) {
+      database.splice(idx, 1);
+      localStorage.setItem('ceramic_clip_v3_db', JSON.stringify(database));
+      renderInventory();
+      updateUIState();
+    };
+
+    window.clearDatabase = function() {
+      if(confirm('Wirklich das gesamte Sortiment löschen?')) {
+        database = [];
+        localStorage.removeItem('ceramic_clip_v3_db');
+        renderInventory();
+        updateUIState();
+      }
+    };
+
+    function updateUIState() {
+      document.getElementById('db-badge').innerText = `${database.length} Artikel`;
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      init();
+    });
+  </script>
+</body>
+</html>
