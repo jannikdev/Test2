@@ -2,93 +2,170 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Keramik Kasse (Manuelle Steuerung)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Keramik Kasse Pro</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <!-- TensorFlow.js & MobileNet -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 12px; background: #f4f4f7; max-width: 480px; margin: auto; }
-    h2 { margin: 6px 0 10px; font-size: 1.1rem; }
-    .cam-box { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
-    video { width: 100%; display: block; aspect-ratio: 1/1; object-fit: cover; }
-    .reticle { position: absolute; top: 15%; left: 15%; width: 70%; height: 70%; border: 2px dashed rgba(255,255,255,0.8); border-radius: 8px; box-sizing: border-box; pointer-events: none; }
-    .card { background: white; padding: 14px; border-radius: 10px; margin: 10px 0; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
-    input, button { width: 100%; padding: 12px; margin: 6px 0; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
-    input { border: 1px solid #ccc; }
-    
-    button.primary { background: #007aff; color: white; border: none; font-weight: 600; cursor: pointer; }
-    button.action { background: #34c759; color: white; border: none; font-weight: 600; cursor: pointer; }
-    button.secondary { background: #e5e5ea; color: #1c1c1e; border: none; font-weight: 500; cursor: pointer; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    .btn-row { display: flex; gap: 8px; }
-    .btn-row button { flex: 1; }
-
-    .spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid rgba(0,122,255,0.3); border-radius: 50%; border-top-color: #007aff; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 8px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .list-item { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 6px 0; font-size: 0.9rem; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; user-select: none; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
-<body>
+<body class="bg-slate-950 text-slate-100 h-[100dvh] flex flex-col overflow-hidden">
 
-  <div class="cam-box">
-    <video id="webcam" autoplay playsinline muted></video>
-    <div class="reticle"></div>
-  </div>
-
-  <!-- Kassen-Erkennung -->
-  <div class="card">
-    <div id="status" style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">Initialisiere...</div>
-    <button id="btn-predict" class="primary" onclick="predictCurrent()" disabled>🔍 Objekt jetzt scannen</button>
-    <div id="predict-loading" style="display: none; text-align: center; margin-top: 10px; font-weight: bold; color: #007aff;">
-      <span class="spinner"></span> Analysiere Bild...
+  <!-- TOP HEADER -->
+  <header class="px-5 py-3.5 bg-slate-900/90 backdrop-blur-xl border-b border-slate-800/80 flex justify-between items-center z-20 shrink-0">
+    <div class="flex items-center space-x-2.5">
+      <div class="w-2.5 h-2.5 rounded-full bg-amber-500 transition-colors duration-300" id="status-dot"></div>
+      <h1 class="font-semibold text-sm tracking-tight text-slate-200" id="app-status">Initialisiere...</h1>
     </div>
-    <div id="match-results" style="margin-top: 8px;"></div>
-  </div>
+    <span class="text-xs px-3 py-1 rounded-full bg-slate-800 text-slate-300 font-medium border border-slate-700/50" id="db-badge">0 Artikel</span>
+  </header>
 
-  <!-- Manuelles Anlernen -->
-  <div class="card">
-    <h2>Neuen Artikel anlernen</h2>
-    <input type="text" id="obj-name" placeholder="Name (z.B. Tasse blau groß)">
-    <input type="number" id="obj-price" step="0.50" placeholder="Preis in € (z.B. 14.50)">
-    
-    <div class="btn-row">
-      <button class="secondary" id="btn-snap" onclick="captureFrame()" disabled>📸 Foto hinzufügen</button>
-      <button class="action" id="btn-save" onclick="saveItem()" disabled>💾 Speichern</button>
-    </div>
-    <div id="snap-info" style="font-size: 0.85rem; color: #666; margin-top: 6px;">0 Fotos aufgenommen</div>
-  </div>
+  <!-- MAIN VIEWPORT -->
+  <main class="flex-1 relative overflow-y-auto hide-scrollbar pb-28">
 
-  <!-- Artikelbestand -->
-  <div class="card">
-    <h2>Datenbank (<span id="count">0</span> Artikel)</h2>
-    <div id="item-list"></div>
-  </div>
+    <!-- VIEW 1: KASSE / SCANNER -->
+    <section id="view-scanner" class="p-4 space-y-4 max-w-md mx-auto">
+      <!-- Kamerabox -->
+      <div class="relative w-full aspect-square rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl">
+        <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
+        <div class="absolute inset-0 border-[36px] border-slate-950/40 pointer-events-none flex items-center justify-center">
+          <div class="w-full h-full border-2 border-dashed border-white/40 rounded-2xl"></div>
+        </div>
+        <div class="absolute bottom-4 left-0 right-0 text-center">
+          <span class="px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-xs font-medium text-white/90 border border-white/10 shadow-lg">
+            Objekt im Rahmen platzieren
+          </span>
+        </div>
+      </div>
 
-  <script>
+      <!-- Scan-Button -->
+      <button onclick="performScan()" id="btn-scan" disabled
+        class="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] transition-all font-semibold text-white shadow-lg shadow-blue-600/30 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center space-x-2 text-base">
+        <span>🔍 Keramik scannen & zuordnen</span>
+      </button>
+
+      <!-- Ergebnisse -->
+      <div id="results-container" class="space-y-2">
+        <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 text-center text-slate-400 text-sm">
+          Bereit für Kassiervorgang
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 2: ANLERNEN -->
+    <section id="view-add" class="p-4 space-y-4 max-w-md mx-auto hidden">
+      <div class="bg-slate-900 border border-slate-800/80 p-5 rounded-3xl space-y-5 shadow-2xl">
+        <h2 class="font-semibold text-base text-white">Neues Keramik-Modell</h2>
+        
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs font-medium text-slate-400 mb-1.5 block">Bezeichnung (inkl. Größe falls relevant)</label>
+            <input type="text" id="input-name" placeholder="z.B. Teller gebogen groß" 
+              class="w-full px-4 py-3.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-sm transition-colors">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-400 mb-1.5 block">Preis in €</label>
+            <input type="number" id="input-price" step="0.50" placeholder="19.00" 
+              class="w-full px-4 py-3.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-sm transition-colors">
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-800/80 space-y-3">
+          <div class="flex justify-between items-center text-sm">
+            <span class="text-slate-400">Erfasste Winkel-Fotos:</span>
+            <span id="shot-counter" class="font-bold text-blue-400 text-base bg-blue-950/60 border border-blue-900/50 px-3 py-0.5 rounded-lg">0</span>
+          </div>
+
+          <button onclick="captureTrainingShot()" id="btn-shoot" disabled
+            class="w-full py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-[0.98] transition-all text-sm font-semibold text-slate-200 flex items-center justify-center space-x-2 border border-slate-700/50">
+            <span>📸 Foto aus aktuellem Winkel hinzufügen</span>
+          </button>
+          <p class="text-[11px] text-slate-500 text-center">Tipp: Mache 3–4 Fotos (Vorderseite, leicht gedreht, Detail), um die Erkennung perfekt zu machen.</p>
+        </div>
+
+        <button onclick="saveNewItem()" id="btn-save-item" disabled
+          class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] transition-all font-semibold text-white shadow-lg shadow-emerald-600/30 disabled:opacity-40 disabled:pointer-events-none mt-2 text-base">
+          Artikel speichern
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW 3: INVENTAR -->
+    <section id="view-inventory" class="p-4 space-y-3 max-w-md mx-auto hidden">
+      <div class="flex justify-between items-center px-1 mb-1">
+        <h2 class="font-semibold text-xs uppercase tracking-wider text-slate-400">Sortiment & Datenbank</h2>
+        <button onclick="clearDatabase()" class="text-xs text-rose-400 hover:underline font-medium">Alle löschen</button>
+      </div>
+      <div id="inventory-list" class="space-y-2"></div>
+    </section>
+
+  </main>
+
+  <!-- FIXED BOTTOM NAVIGATION -->
+  <nav class="absolute bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800/80 px-6 py-3 flex justify-around items-center z-30 shadow-2xl">
+    <button onclick="switchTab('scanner')" id="nav-scanner" class="flex flex-col items-center space-y-1 text-blue-500 transition-colors">
+      <span class="text-xs font-semibold">🛒 Kasse</span>
+    </button>
+    <button onclick="switchTab('add')" id="nav-add" class="flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200 transition-colors">
+      <span class="text-xs font-semibold">➕ Anlernen</span>
+    </button>
+    <button onclick="switchTab('inventory')" id="nav-inventory" class="flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200 transition-colors">
+      <span class="text-xs font-semibold">📦 Inventar</span>
+    </button>
+  </nav>
+
+  <!-- APP LOGIC -->
+  <script type="module">
+    import { animate } from "https://cdn.jsdelivr.net/npm/motion@latest/+esm";
+
     let net = null;
-    let database = JSON.parse(localStorage.getItem('ceramic_manual_db') || '[]');
+    let database = JSON.parse(localStorage.getItem('ceramic_pro_db') || '[]');
     let currentShots = [];
     const video = document.getElementById('webcam');
 
     async function init() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: 400, height: 400 }
+          video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 640 } }
         });
         video.srcObject = stream;
-        
-        document.getElementById('status').innerText = 'Lade KI-Modell...';
+
+        document.getElementById('app-status').innerText = 'Lade KI-Modell...';
         net = await mobilenet.load({ version: 2, alpha: 1.0 });
+
+        document.getElementById('app-status').innerText = 'System bereit';
+        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-emerald-500';
+        document.getElementById('btn-scan').disabled = false;
+        document.getElementById('btn-shoot').disabled = false;
         
-        document.getElementById('status').innerText = 'System bereit';
-        document.getElementById('btn-predict').disabled = false;
-        document.getElementById('btn-snap').disabled = false;
-        updateList();
+        updateUIState();
       } catch (err) {
-        document.getElementById('status').innerText = 'Fehler: ' + err.message;
+        document.getElementById('app-status').innerText = 'Kamera-Fehler';
+        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+        alert('Kamerazugriff verweigert oder nicht unterstützt.');
       }
+    }
+
+    window.switchTab = function(tab) {
+      ['scanner', 'add', 'inventory'].forEach(t => {
+        const el = document.getElementById(`view-${t}`);
+        const nav = document.getElementById(`nav-${t}`);
+        if (t === tab) {
+          el.classList.remove('hidden');
+          nav.className = 'flex flex-col items-center space-y-1 text-blue-500 transition-colors';
+          animate(el, { opacity: [0, 1], y: [8, 0] }, { duration: 0.25 });
+        } else {
+          el.classList.add('hidden');
+          nav.className = 'flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200 transition-colors';
+        }
+      });
+      if(tab === 'inventory') renderInventory();
     }
 
     function getEmbedding() {
@@ -109,113 +186,142 @@
       return dot / (Math.sqrt(normA) * Math.sqrt(normB) || 1);
     }
 
-    // 1. Manuelles Foto aufnehmen
-    window.captureFrame = function() {
+    window.captureTrainingShot = function() {
       if (!net) return;
-      const embedding = getEmbedding();
-      currentShots.push(embedding);
+      const vec = getEmbedding();
+      currentShots.push(vec);
       
-      document.getElementById('snap-info').innerText = `${currentShots.length} Foto(s) im Speicher bereit`;
-      document.getElementById('btn-save').disabled = false;
+      document.getElementById('shot-counter').innerText = currentShots.length;
+      document.getElementById('btn-save-item').disabled = currentShots.length === 0;
+      
+      if(navigator.vibrate) navigator.vibrate(30);
+      animate(document.getElementById('btn-shoot'), { scale: [0.97, 1] }, { duration: 0.15 });
     };
 
-    // 2. Artikel samt Vektoren speichern
-    window.saveItem = function() {
-      const name = document.getElementById('obj-name').value.trim();
-      const price = document.getElementById('obj-price').value.trim();
+    window.saveNewItem = function() {
+      const name = document.getElementById('input-name').value.trim();
+      const price = document.getElementById('input-price').value.trim();
 
-      if (!name || !price) return alert('Bitte erst Name und Preis eingeben!');
-      if (currentShots.length === 0) return alert('Bitte mindestens ein Foto machen!');
+      if (!name || !price) return alert('Bitte Name und Preis eingeben!');
+      if (currentShots.length === 0) return alert('Bitte mindestens 1 Foto aufnehmen!');
 
-      database.push({
-        name,
-        price,
-        embeddings: currentShots
-      });
+      database.push({ name, price, embeddings: currentShots });
+      localStorage.setItem('ceramic_pro_db', JSON.stringify(database));
 
-      localStorage.setItem('ceramic_manual_db', JSON.stringify(database));
-
-      // Reset
       currentShots = [];
-      document.getElementById('obj-name').value = '';
-      document.getElementById('obj-price').value = '';
-      document.getElementById('snap-info').innerText = '0 Fotos aufgenommen (Gespeichert!)';
-      document.getElementById('btn-save').disabled = true;
-      updateList();
+      document.getElementById('input-name').value = '';
+      document.getElementById('input-price').value = '';
+      document.getElementById('shot-counter').innerText = '0';
+      document.getElementById('btn-save-item').disabled = true;
+      
+      updateUIState();
+      switchTab('scanner');
     };
 
-    // 3. Manuelle Erkennung mit Progress-Indikator
-    window.predictCurrent = async function() {
-      if (database.length === 0) return alert('Bitte lerne zuerst mindestens einen Artikel an!');
-      
-      const btn = document.getElementById('btn-predict');
-      const loader = document.getElementById('predict-loading');
-      const resultsContainer = document.getElementById('match-results');
+    // Robuster Multi-Vector Scan
+    window.performScan = async function() {
+      if (database.length === 0) {
+        alert('Bitte zuerst im Tab "Anlernen" Artikel hinterlegen!');
+        switchTab('add');
+        return;
+      }
 
-      btn.disabled = true;
-      loader.style.display = 'block';
-      resultsContainer.innerHTML = '';
+      const container = document.getElementById('results-container');
+      container.innerHTML = `
+        <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800 text-center text-slate-400 text-sm flex items-center justify-center space-x-2">
+          <svg class="animate-spin h-4 w-4 text-blue-500" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+          <span>Analysiere Keramik...</span>
+        </div>
+      `;
 
-      // Kurzer Delay, damit der UI-Spinner rendern kann
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise(r => setTimeout(r, 40));
 
       try {
         const currentVec = getEmbedding();
         let scores = [];
 
+        // Multi-Vector Matching: Prüfe gegen alle gelernten Winkel jedes Artikels
         for (const item of database) {
-          let maxItemSim = -1;
+          let maxSim = -1;
           for (const vec of item.embeddings) {
             const sim = cosineSimilarity(currentVec, vec);
-            if (sim > maxItemSim) maxItemSim = sim;
+            if (sim > maxSim) maxSim = sim;
           }
-          scores.push({ item, sim: maxItemSim });
+          scores.push({ item, sim: maxSim });
         }
 
         scores.sort((a, b) => b.sim - a.sim);
         const top3 = scores.slice(0, 3);
 
-        resultsContainer.innerHTML = top3.map((res, index) => {
+        container.innerHTML = '';
+        top3.forEach((res, index) => {
           const percent = Math.max(0, Math.round(res.sim * 100));
-          const bg = index === 0 && percent > 65 ? '#e6f4ea' : '#f9f9fb';
-          const color = index === 0 && percent > 65 ? '#137333' : '#333';
-          return `
-            <div style="background: ${bg}; border: 1px solid #ddd; padding: 10px; margin: 6px 0; border-radius: 8px; display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <div style="font-weight:bold; color:${color}; font-size:1.05rem;">${res.item.name}</div>
-                <div style="font-size:0.9rem; color:#555;"><b>${res.item.price} €</b> (${percent}% Übereinstimmung)</div>
-              </div>
-              <button onclick="alert('Kasse gebucht: ${res.item.name} (${res.item.price} €)')" style="background:#007aff; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; width:auto; margin:0; font-weight:bold;">Buchen</button>
+          const isBest = index === 0 && percent > 60;
+          
+          const card = document.createElement('div');
+          card.className = `p-4 rounded-2xl border transition-all flex justify-between items-center ${isBest ? 'bg-emerald-950/40 border-emerald-500/60 shadow-lg shadow-emerald-950/30' : 'bg-slate-900 border-slate-800'}`;
+          card.innerHTML = `
+            <div>
+              <div class="font-bold text-white text-base">${res.item.name}</div>
+              <div class="text-xs text-slate-400 mt-0.5"><span class="text-white font-semibold text-sm">${res.item.price} €</span> &bull; <span class="${percent > 60 ? 'text-emerald-400 font-medium' : 'text-slate-400'}">${percent}% Übereinstimmung</span></div>
             </div>
+            <button onclick="bookItem('${res.item.name}', '${res.item.price}')" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-semibold shadow-md">
+              Buchen
+            </button>
           `;
-        }).join('');
+          container.appendChild(card);
+          animate(card, { opacity: [0, 1], y: [8, 0] }, { duration: 0.25, delay: index * 0.04 });
+        });
       } catch (err) {
-        console.error(err);
-      } finally {
-        loader.style.display = 'none';
-        btn.disabled = false;
+        container.innerHTML = `<div class="p-6 rounded-2xl bg-slate-900 text-rose-400 text-sm text-center">Scan fehlgeschlagen.</div>`;
       }
     };
 
-    window.updateList = function() {
-      document.getElementById('count').innerText = database.length;
-      const list = document.getElementById('item-list');
+    window.bookItem = function(name, price) {
+      if(navigator.vibrate) navigator.vibrate(50);
+      alert(`Erfolgreich gebucht:\n${name} — ${price} €`);
+    };
+
+    function renderInventory() {
+      const list = document.getElementById('inventory-list');
+      if (database.length === 0) {
+        list.innerHTML = `<div class="p-6 rounded-2xl bg-slate-900 border border-slate-800 text-center text-slate-400 text-sm">Keine Artikel vorhanden</div>`;
+        return;
+      }
       list.innerHTML = database.map((item, idx) => `
-        <div class="list-item">
-          <span>${item.name} (${item.embeddings.length} Winkel) — <b>${item.price} €</b></span>
-          <button onclick="deleteItem(${idx})" style="background:#ff3b30; color:white; border:none; padding:4px 8px; border-radius:4px; width:auto; font-size:0.8rem; margin:0; cursor:pointer;">Löschen</button>
+        <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex justify-between items-center shadow-sm">
+          <div>
+            <div class="font-semibold text-white text-sm">${item.name}</div>
+            <div class="text-xs text-slate-400 mt-0.5"><span class="text-slate-200 font-medium">${item.price} €</span> &bull; ${item.embeddings.length} Aufnahmewinkel</div>
+          </div>
+          <button onclick="deleteItem(${idx})" class="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-medium border border-rose-500/20">
+            Löschen
+          </button>
         </div>
       `).join('');
-    };
+    }
 
     window.deleteItem = function(idx) {
       database.splice(idx, 1);
-      localStorage.setItem('ceramic_manual_db', JSON.stringify(database));
-      updateList();
+      localStorage.setItem('ceramic_pro_db', JSON.stringify(database));
+      renderInventory();
+      updateUIState();
     };
+
+    window.clearDatabase = function() {
+      if(confirm('Wirklich das gesamte Sortiment löschen?')) {
+        database = [];
+        localStorage.removeItem('ceramic_pro_db');
+        renderInventory();
+        updateUIState();
+      }
+    };
+
+    function updateUIState() {
+      document.getElementById('db-badge').innerText = `${database.length} Artikel`;
+    }
 
     window.onload = init;
   </script>
 </body>
 </html>
-
