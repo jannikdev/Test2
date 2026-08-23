@@ -284,7 +284,7 @@
 
     // --- WebWorker: YOLOv8 + CLIP (Classic Worker für Mobile Safari / file:// Kompatibilität) ---
     const workerCode = `
-      importScripts('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js');
+      importScripts('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
       const { pipeline, env } = transformers;
       env.allowLocalModels = false;
       
@@ -331,6 +331,12 @@
     `;
     const blob = new Blob([workerCode], { type: 'application/javascript' });
     const worker = new Worker(URL.createObjectURL(blob)); // Classic Worker (ohne type: module)
+
+    worker.onerror = (err) => {
+      console.error('Globale Worker Exception:', err);
+      document.getElementById('loading-text').innerHTML = `<span class="text-rose-400 font-bold">Kritischer Fehler:</span> KI-Engine konnte nicht starten.`;
+      document.getElementById('loading-spinner').className = 'absolute inset-0 rounded-full border-4 border-rose-500 border-t-rose-200';
+    };
 
     let reqCounter = 0;
     const pendingRequests = new Map();
@@ -450,7 +456,7 @@
 
         ctxDetection.fillStyle = color;
         ctxDetection.font = 'bold 36px "SF Pro Text", sans-serif';
-        const text = \`\${b.label} (\${Math.round(b.score * 100)}%)\`;
+        const text = `${b.label} (${Math.round(b.score * 100)}%)`;
         ctxDetection.fillText(text, xmin, ymin > 40 ? ymin - 15 : ymin + 40);
       });
     }
@@ -546,7 +552,7 @@
       updateActionButtons();
 
       ['scanner', 'add', 'inventory'].forEach(t => {
-        const btn = document.getElementById(\`nav-\${t}\`);
+        const btn = document.getElementById(`nav-${t}`);
         const bar = btn.querySelector('div');
         const text = btn.querySelector('span');
 
@@ -576,26 +582,26 @@
       const disabledProp = !isWorkerReady ? 'disabled' : '';
 
       if (currentMode === 'scanner') {
-        container.innerHTML = \`
-          <button onclick="performScan()" id="btn-scan" \${disabledProp}
-            class="w-full py-4.5 rounded-2xl \${disabledClass} active:scale-[0.98] transition-all flex justify-center items-center space-x-2.5 font-semibold text-white shadow-lg">
+        container.innerHTML = `
+          <button onclick="performScan()" id="btn-scan" ${disabledProp}
+            class="w-full py-4.5 rounded-2xl ${disabledClass} active:scale-[0.98] transition-all flex justify-center items-center space-x-2.5 font-semibold text-white shadow-lg">
             <i data-lucide="search" class="w-5 h-5"></i>
             <span>Scanner: Fokussiertes Objekt buchen</span>
           </button>
-        \`;
+        `;
       } else {
         const emeraldClass = !isWorkerReady ? 'opacity-50 cursor-not-allowed bg-slate-800' : 'bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_20px_rgba(5,150,105,0.4)]';
-        container.innerHTML = \`
-          <button onclick="captureTrainingShot()" id="btn-shoot" \${disabledProp}
-            class="w-full py-4 rounded-2xl \${emeraldClass} active:scale-[0.98] transition-all flex justify-center items-center space-x-2 font-medium text-white shadow-lg">
+        container.innerHTML = `
+          <button onclick="captureTrainingShot()" id="btn-shoot" ${disabledProp}
+            class="w-full py-4 rounded-2xl ${emeraldClass} active:scale-[0.98] transition-all flex justify-center items-center space-x-2 font-medium text-white shadow-lg">
             <i data-lucide="camera" class="w-5 h-5"></i>
-            <span>Winkel erfassen (\${currentShots.length} gespeichert)</span>
+            <span>Winkel erfassen (${currentShots.length} gespeichert)</span>
           </button>
           <button onclick="switchTab('add')" class="w-full py-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 active:scale-[0.98] transition-all flex justify-center items-center space-x-2 font-medium text-slate-300 shadow-inner">
             <i data-lucide="edit-3" class="w-4 h-4"></i>
             <span>Namen & Preis festlegen</span>
           </button>
-        \`;
+        `;
       }
       lucide.createIcons();
     };
@@ -646,7 +652,7 @@
       switchTab('scanner');
       
       const container = document.getElementById('results-container');
-      container.innerHTML = \`<div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold text-center fade-enter fade-enter-active">\${name} gespeichert!</div>\`;
+      container.innerHTML = `<div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold text-center fade-enter fade-enter-active">${name} gespeichert!</div>`;
       setTimeout(() => container.innerHTML='', 3000);
     };
 
@@ -658,7 +664,7 @@
       }
       
       const container = document.getElementById('results-container');
-      container.innerHTML = \`
+      container.innerHTML = `
         <div class="p-6 rounded-[2rem] glass border border-slate-800 flex flex-col items-center justify-center space-y-3 shadow-2xl">
           <div class="relative">
             <div class="absolute inset-0 rounded-full bg-cyan-500 blur-md animate-pulse opacity-50"></div>
@@ -666,7 +672,7 @@
           </div>
           <span class="text-sm font-medium text-slate-300">Vektoranalyse via CLIP...</span>
         </div>
-      \`;
+      `;
       lucide.createIcons();
 
       try {
@@ -693,49 +699,49 @@
           const isBest = index === 0 && percent >= 65;
 
           const card = document.createElement('div');
-          card.className = \`p-4 rounded-2xl border transition-all duration-300 flex justify-between items-center shadow-lg fade-enter \${isBest ? 'bg-emerald-950/40 border-emerald-800/50 scale-[1.02]' : 'glass border-slate-800 opacity-70'}\`;
+          card.className = `p-4 rounded-2xl border transition-all duration-300 flex justify-between items-center shadow-lg fade-enter ${isBest ? 'bg-emerald-950/40 border-emerald-800/50 scale-[1.02]' : 'glass border-slate-800 opacity-70'}`;
           
-          card.innerHTML = \`
+          card.innerHTML = `
             <div class="flex items-center space-x-3.5">
-              <div class="p-3 rounded-xl \${isBest ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}">
-                <i data-lucide="\${isBest ? 'check-circle' : 'help-circle'}" class="w-6 h-6"></i>
+              <div class="p-3 rounded-xl ${isBest ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}">
+                <i data-lucide="${isBest ? 'check-circle' : 'help-circle'}" class="w-6 h-6"></i>
               </div>
               <div>
-                <div class="font-bold text-white text-[15px] leading-tight">\${res.item.name}</div>
-                <div class="text-[11px] mt-1 flex items-center space-x-1.5 \${isBest ? 'text-emerald-400' : 'text-slate-500'}">
-                  <span class="font-bold bg-slate-900/50 px-1.5 py-0.5 rounded">\${percent}% Match</span>
+                <div class="font-bold text-white text-[15px] leading-tight">${res.item.name}</div>
+                <div class="text-[11px] mt-1 flex items-center space-x-1.5 ${isBest ? 'text-emerald-400' : 'text-slate-500'}">
+                  <span class="font-bold bg-slate-900/50 px-1.5 py-0.5 rounded">${percent}% Match</span>
                   <span>&bull;</span>
-                  <span>\${res.item.price} €</span>
+                  <span>${res.item.price} €</span>
                 </div>
               </div>
             </div>
-            <button onclick="bookItem('\${res.item.name}', '\${res.item.price}')" class="px-5 py-3 rounded-xl \${isBest ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'} active:scale-95 transition-all font-medium text-sm flex items-center space-x-2">
+            <button onclick="bookItem('${res.item.name}', '${res.item.price}')" class="px-5 py-3 rounded-xl ${isBest ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'} active:scale-95 transition-all font-medium text-sm flex items-center space-x-2">
               <i data-lucide="shopping-bag" class="w-4 h-4"></i>
               <span>Buchen</span>
             </button>
-          \`;
+          `;
           container.appendChild(card);
           setTimeout(() => card.classList.add('fade-enter-active'), index * 100);
         });
         lucide.createIcons();
       } catch (err) {
         console.error(err);
-        container.innerHTML = \`<div class="p-6 rounded-[2rem] bg-rose-950/40 text-rose-400 text-center shadow-lg">Scan fehlgeschlagen</div>\`;
+        container.innerHTML = `<div class="p-6 rounded-[2rem] bg-rose-950/40 text-rose-400 text-center shadow-lg">Scan fehlgeschlagen</div>`;
       }
     };
 
     window.bookItem = function(name, price) {
       if(navigator.vibrate) navigator.vibrate([15, 30, 15]);
       const container = document.getElementById('results-container');
-      container.innerHTML = \`
+      container.innerHTML = `
         <div class="p-6 rounded-[2rem] bg-cyan-950/40 border border-cyan-900/50 text-center shadow-2xl fade-enter fade-enter-active">
           <div class="w-16 h-16 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center mx-auto mb-3">
             <i data-lucide="receipt" class="w-8 h-8"></i>
           </div>
-          <div class="text-white font-bold text-lg">\${name}</div>
-          <div class="text-cyan-400 font-semibold">\${price} € gebucht</div>
+          <div class="text-white font-bold text-lg">${name}</div>
+          <div class="text-cyan-400 font-semibold">${price} € gebucht</div>
         </div>
-      \`;
+      `;
       lucide.createIcons();
       setTimeout(() => container.innerHTML = '', 3000);
     };
@@ -743,25 +749,25 @@
     window.renderInventory = function() {
       const list = document.getElementById('inventory-list');
       if (database.length === 0) {
-        list.innerHTML = \`<div class="p-10 text-center text-slate-500">Inventar ist leer</div>\`;
+        list.innerHTML = `<div class="p-10 text-center text-slate-500">Inventar ist leer</div>`;
         return;
       }
-      list.innerHTML = database.map((item) => \`
+      list.innerHTML = database.map((item) => `
         <div class="p-4 rounded-2xl glass border border-slate-800 flex justify-between items-center shadow-lg hover:border-slate-700 transition-colors">
           <div class="flex items-center space-x-4">
             <div class="p-2.5 rounded-xl bg-slate-800 text-cyan-400"><i data-lucide="box" class="w-5 h-5"></i></div>
             <div>
-              <div class="font-semibold text-white text-sm">\${item.name}</div>
+              <div class="font-semibold text-white text-sm">${item.name}</div>
               <div class="text-xs text-slate-400 mt-1 flex items-center space-x-2">
-                <span class="text-slate-300 font-medium">\${item.price} €</span>
+                <span class="text-slate-300 font-medium">${item.price} €</span>
               </div>
             </div>
           </div>
-          <button onclick="deleteItem(\${item.id})" class="p-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-colors">
+          <button onclick="deleteItem(${item.id})" class="p-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-colors">
             <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </div>
-      \`).join('');
+      `).join('');
       lucide.createIcons();
     };
 
@@ -783,7 +789,7 @@
     };
 
     function updateUIState() {
-      document.getElementById('db-badge').innerText = \`\${database.length} Artikel\`;
+      document.getElementById('db-badge').innerText = `${database.length} Artikel`;
     }
 
     // --- Bootstrap ---
