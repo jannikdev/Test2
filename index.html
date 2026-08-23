@@ -3,21 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Keramik Kasse - Direkt auf dem Handy</title>
-  <!-- TensorFlow.js und MobileNet v2 -->
+  <title>Keramik Kasse (Manuelle Steuerung)</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 12px; background: #f4f4f7; max-width: 480px; margin: auto; }
-    h2 { margin: 8px 0; font-size: 1.1rem; }
-    .cam-box { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    h2 { margin: 6px 0 10px; font-size: 1.1rem; }
+    .cam-box { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
     video { width: 100%; display: block; aspect-ratio: 1/1; object-fit: cover; }
     .reticle { position: absolute; top: 15%; left: 15%; width: 70%; height: 70%; border: 2px dashed rgba(255,255,255,0.8); border-radius: 8px; box-sizing: border-box; pointer-events: none; }
     .card { background: white; padding: 14px; border-radius: 10px; margin: 10px 0; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
-    input, button { width: 100%; padding: 10px; margin: 6px 0; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
+    input, button { width: 100%; padding: 12px; margin: 6px 0; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
     input { border: 1px solid #ccc; }
-    button { background: #007aff; color: white; border: none; font-weight: 600; cursor: pointer; }
-    .list-item { display: flex; justify-content: space-between; align-items:center; border-bottom: 1px solid #eee; padding: 6px 0; font-size: 0.9rem; }
+    
+    button.primary { background: #007aff; color: white; border: none; font-weight: 600; cursor: pointer; }
+    button.action { background: #34c759; color: white; border: none; font-weight: 600; cursor: pointer; }
+    button.secondary { background: #e5e5ea; color: #1c1c1e; border: none; font-weight: 500; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-row { display: flex; gap: 8px; }
+    .btn-row button { flex: 1; }
+
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid rgba(0,122,255,0.3); border-radius: 50%; border-top-color: #007aff; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .list-item { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 6px 0; font-size: 0.9rem; }
   </style>
 </head>
 <body>
@@ -27,19 +37,30 @@
     <div class="reticle"></div>
   </div>
 
+  <!-- Kassen-Erkennung -->
   <div class="card">
-    <div id="status" style="font-weight: bold; margin-bottom: 6px; font-size: 0.9rem; color:#333;">Initialisiere Kamera & Modell...</div>
-    <div id="match-results">Warte auf Artikel...</div>
+    <div id="status" style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">Initialisiere...</div>
+    <button id="btn-predict" class="primary" onclick="predictCurrent()" disabled>🔍 Objekt jetzt scannen</button>
+    <div id="predict-loading" style="display: none; text-align: center; margin-top: 10px; font-weight: bold; color: #007aff;">
+      <span class="spinner"></span> Analysiere Bild...
+    </div>
+    <div id="match-results" style="margin-top: 8px;"></div>
   </div>
 
+  <!-- Manuelles Anlernen -->
   <div class="card">
-    <h2>Keramik anlernen</h2>
-    <input type="text" id="obj-name" placeholder="Name (z.B. Teller gebogen)">
-    <input type="number" id="obj-price" step="0.50" placeholder="Preis in € (z.B. 22.00)">
-    <button id="btn-scan" onclick="startScanRecord()">Kurz-Scan starten (5 Frames)</button>
-    <div id="scan-progress" style="font-size: 0.85rem; color: #666; margin-top:4px;"></div>
+    <h2>Neuen Artikel anlernen</h2>
+    <input type="text" id="obj-name" placeholder="Name (z.B. Tasse blau groß)">
+    <input type="number" id="obj-price" step="0.50" placeholder="Preis in € (z.B. 14.50)">
+    
+    <div class="btn-row">
+      <button class="secondary" id="btn-snap" onclick="captureFrame()" disabled>📸 Foto hinzufügen</button>
+      <button class="action" id="btn-save" onclick="saveItem()" disabled>💾 Speichern</button>
+    </div>
+    <div id="snap-info" style="font-size: 0.85rem; color: #666; margin-top: 6px;">0 Fotos aufgenommen</div>
   </div>
 
+  <!-- Artikelbestand -->
   <div class="card">
     <h2>Datenbank (<span id="count">0</span> Artikel)</h2>
     <div id="item-list"></div>
@@ -47,9 +68,9 @@
 
   <script>
     let net = null;
-    let database = JSON.parse(localStorage.getItem('ceramic_mobile_db') || '[]');
+    let database = JSON.parse(localStorage.getItem('ceramic_manual_db') || '[]');
+    let currentShots = [];
     const video = document.getElementById('webcam');
-    let isRunning = false;
 
     async function init() {
       try {
@@ -61,16 +82,15 @@
         document.getElementById('status').innerText = 'Lade KI-Modell...';
         net = await mobilenet.load({ version: 2, alpha: 1.0 });
         
-        document.getElementById('status').innerText = 'Bereit zur Erkennung';
+        document.getElementById('status').innerText = 'System bereit';
+        document.getElementById('btn-predict').disabled = false;
+        document.getElementById('btn-snap').disabled = false;
         updateList();
-        isRunning = true;
-        predictLoop();
       } catch (err) {
         document.getElementById('status').innerText = 'Fehler: ' + err.message;
       }
     }
 
-    // Vektor-Embedding über TensorFlow.js extrahieren
     function getEmbedding() {
       return tf.tidy(() => {
         const tensor = tf.browser.fromPixels(video);
@@ -89,98 +109,113 @@
       return dot / (Math.sqrt(normA) * Math.sqrt(normB) || 1);
     }
 
-    async function startScanRecord() {
+    // 1. Manuelles Foto aufnehmen
+    window.captureFrame = function() {
+      if (!net) return;
+      const embedding = getEmbedding();
+      currentShots.push(embedding);
+      
+      document.getElementById('snap-info').innerText = `${currentShots.length} Foto(s) im Speicher bereit`;
+      document.getElementById('btn-save').disabled = false;
+    };
+
+    // 2. Artikel samt Vektoren speichern
+    window.saveItem = function() {
       const name = document.getElementById('obj-name').value.trim();
       const price = document.getElementById('obj-price').value.trim();
-      if (!name || !price) return alert('Bitte Name und Preis eingeben!');
-      if (!net) return alert('Modell lädt noch...');
 
-      const btn = document.getElementById('btn-scan');
-      const progress = document.getElementById('scan-progress');
-      btn.disabled = true;
+      if (!name || !price) return alert('Bitte erst Name und Preis eingeben!');
+      if (currentShots.length === 0) return alert('Bitte mindestens ein Foto machen!');
 
-      const embeddings = [];
-      for (let i = 1; i <= 5; i++) {
-        progress.innerText = `Scanne Frame ${i}/5... Objekt leicht drehen`;
-        embeddings.push(getEmbedding());
-        await new Promise(r => setTimeout(r, 200));
-      }
+      database.push({
+        name,
+        price,
+        embeddings: currentShots
+      });
 
-      database.push({ name, price, embeddings });
-      localStorage.setItem('ceramic_mobile_db', JSON.stringify(database));
-      
-      progress.innerText = 'Gespeichert!';
+      localStorage.setItem('ceramic_manual_db', JSON.stringify(database));
+
+      // Reset
+      currentShots = [];
       document.getElementById('obj-name').value = '';
       document.getElementById('obj-price').value = '';
-      btn.disabled = false;
+      document.getElementById('snap-info').innerText = '0 Fotos aufgenommen (Gespeichert!)';
+      document.getElementById('btn-save').disabled = true;
       updateList();
-    }
+    };
 
-    async function predictLoop() {
-      if (database.length > 0 && net && isRunning) {
-        try {
-          const currentVec = getEmbedding();
-          let scores = [];
+    // 3. Manuelle Erkennung mit Progress-Indikator
+    window.predictCurrent = async function() {
+      if (database.length === 0) return alert('Bitte lerne zuerst mindestens einen Artikel an!');
+      
+      const btn = document.getElementById('btn-predict');
+      const loader = document.getElementById('predict-loading');
+      const resultsContainer = document.getElementById('match-results');
 
-          for (const item of database) {
-            let maxItemSim = -1;
-            for (const vec of item.embeddings) {
-              const sim = cosineSimilarity(currentVec, vec);
-              if (sim > maxItemSim) maxItemSim = sim;
-            }
-            scores.push({ item, sim: maxItemSim });
+      btn.disabled = true;
+      loader.style.display = 'block';
+      resultsContainer.innerHTML = '';
+
+      // Kurzer Delay, damit der UI-Spinner rendern kann
+      await new Promise(r => setTimeout(r, 100));
+
+      try {
+        const currentVec = getEmbedding();
+        let scores = [];
+
+        for (const item of database) {
+          let maxItemSim = -1;
+          for (const vec of item.embeddings) {
+            const sim = cosineSimilarity(currentVec, vec);
+            if (sim > maxItemSim) maxItemSim = sim;
           }
-
-          scores.sort((a, b) => b.sim - a.sim);
-          renderResults(scores.slice(0, 3));
-        } catch (e) {
-          console.error(e);
+          scores.push({ item, sim: maxItemSim });
         }
-      }
-      setTimeout(predictLoop, 400);
-    }
 
-    function renderResults(topResults) {
-      const container = document.getElementById('match-results');
-      if (database.length === 0) {
-        container.innerHTML = '<div style="color:#666; text-align:center;">Noch keine Artikel angelernt</div>';
-        return;
-      }
+        scores.sort((a, b) => b.sim - a.sim);
+        const top3 = scores.slice(0, 3);
 
-      container.innerHTML = topResults.map((res, index) => {
-        const percent = Math.max(0, Math.round(res.sim * 100));
-        const bg = index === 0 && percent > 70 ? '#e6f4ea' : '#fff';
-        const color = index === 0 && percent > 70 ? '#137333' : '#333';
-        return `
-          <div style="background: ${bg}; border: 1px solid #ddd; padding: 10px; margin: 6px 0; border-radius: 8px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <div style="font-weight:bold; color:${color};">${res.item.name}</div>
-              <div style="font-size:0.85rem; color:#555;">${res.item.price} € (${percent}% Match)</div>
+        resultsContainer.innerHTML = top3.map((res, index) => {
+          const percent = Math.max(0, Math.round(res.sim * 100));
+          const bg = index === 0 && percent > 65 ? '#e6f4ea' : '#f9f9fb';
+          const color = index === 0 && percent > 65 ? '#137333' : '#333';
+          return `
+            <div style="background: ${bg}; border: 1px solid #ddd; padding: 10px; margin: 6px 0; border-radius: 8px; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-weight:bold; color:${color}; font-size:1.05rem;">${res.item.name}</div>
+                <div style="font-size:0.9rem; color:#555;"><b>${res.item.price} €</b> (${percent}% Übereinstimmung)</div>
+              </div>
+              <button onclick="alert('Kasse gebucht: ${res.item.name} (${res.item.price} €)')" style="background:#007aff; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; width:auto; margin:0; font-weight:bold;">Buchen</button>
             </div>
-            <button onclick="alert('Kasse gebucht: ${res.item.name} (${res.item.price} €)')" style="background:#007aff; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; width:auto; margin:0;">Buchen</button>
-          </div>
-        `;
-      }).join('');
-    }
+          `;
+        }).join('');
+      } catch (err) {
+        console.error(err);
+      } finally {
+        loader.style.display = 'none';
+        btn.disabled = false;
+      }
+    };
 
     window.updateList = function() {
       document.getElementById('count').innerText = database.length;
       const list = document.getElementById('item-list');
       list.innerHTML = database.map((item, idx) => `
         <div class="list-item">
-          <span>${item.name} — ${item.price} €</span>
-          <button onclick="deleteItem(${idx})" style="background:#ff3b30; color:white; border:none; padding:2px 6px; border-radius:4px; width:auto; font-size:0.8rem; margin:0;">Löschen</button>
+          <span>${item.name} (${item.embeddings.length} Winkel) — <b>${item.price} €</b></span>
+          <button onclick="deleteItem(${idx})" style="background:#ff3b30; color:white; border:none; padding:4px 8px; border-radius:4px; width:auto; font-size:0.8rem; margin:0; cursor:pointer;">Löschen</button>
         </div>
       `).join('');
-    }
+    };
 
     window.deleteItem = function(idx) {
       database.splice(idx, 1);
-      localStorage.setItem('ceramic_mobile_db', JSON.stringify(database));
+      localStorage.setItem('ceramic_manual_db', JSON.stringify(database));
       updateList();
-    }
+    };
 
     window.onload = init;
   </script>
 </body>
 </html>
+
