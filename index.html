@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <!-- ANTI CACHE HEADERS (wichtig für lokales Testen) -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Keramik Kasse Pro (Live Detection)</title>
 
   <!-- Tailwind CSS v4 -->
@@ -278,9 +282,10 @@
     const detectionCanvas = document.getElementById('detection-canvas');
     const ctxDetection = detectionCanvas.getContext('2d');
 
-    // --- WebWorker: YOLOv8 + CLIP ---
+    // --- WebWorker: YOLOv8 + CLIP (Classic Worker für Mobile Safari / file:// Kompatibilität) ---
     const workerCode = `
-      import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
+      importScripts('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js');
+      const { pipeline, env } = transformers;
       env.allowLocalModels = false;
       
       let yoloDetector = null;
@@ -325,7 +330,7 @@
       };
     `;
     const blob = new Blob([workerCode], { type: 'application/javascript' });
-    const worker = new Worker(URL.createObjectURL(blob), { type: 'module' });
+    const worker = new Worker(URL.createObjectURL(blob)); // Classic Worker (ohne type: module)
 
     let reqCounter = 0;
     const pendingRequests = new Map();
