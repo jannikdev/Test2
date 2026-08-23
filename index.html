@@ -3,27 +3,52 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Keramik Kasse Pro (CLIP Engine)</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <title>Keramik Kasse Pro</title>
+
+  <!-- Tailwind CSS v4 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; user-select: none; }
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      /* Verhindert Pull-to-refresh und Bounce-Effekte */
+      overscroll-behavior-y: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
     .hide-scrollbar::-webkit-scrollbar { display: none; }
     .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* Sanfte Übergänge für Tabs */
+    .fade-enter { opacity: 0; transform: translateY(10px); }
+    .fade-enter-active { opacity: 1; transform: translateY(0); transition: opacity 300ms, transform 300ms; }
+    
+    /* Glassmorphism Utilities */
+    .glass {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 h-[100dvh] flex flex-col overflow-hidden">
 
   <!-- TOP HEADER -->
-  <header class="px-5 py-4 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/80 flex justify-between items-center z-20 shrink-0">
+  <header class="px-5 py-4 glass border-b border-slate-800/80 flex justify-between items-center z-50 relative shadow-2xl shadow-black/50">
     <div class="flex items-center space-x-3">
-      <div class="w-2.5 h-2.5 rounded-full bg-amber-500 transition-all duration-500 shadow-lg shadow-amber-500/50" id="status-dot"></div>
+      <div id="status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500 transition-all duration-500 shadow-lg shadow-amber-500/50 animate-pulse"></div>
       <div class="flex flex-col">
-        <h1 class="font-semibold text-xs tracking-wide uppercase text-slate-400">CLIP Vision Engine</h1>
-        <span class="text-xs font-medium text-slate-200" id="app-status">Lade CLIP-Modell...</span>
+        <h1 class="font-semibold text-xs tracking-wider uppercase text-slate-400">Keramik Engine <span class="text-blue-500 ml-1">Pro</span></h1>
+        <span class="text-[11px] font-medium text-slate-300" id="app-status">Initialisiere System...</span>
       </div>
     </div>
-    <div class="px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/50 text-xs font-medium text-slate-300 flex items-center space-x-1.5 shadow-sm">
+    <div class="px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/50 text-xs font-medium text-slate-300 flex items-center space-x-1.5 shadow-inner">
       <i data-lucide="database" class="w-3.5 h-3.5 text-blue-400"></i>
       <span id="db-badge">0 Artikel</span>
     </div>
@@ -32,69 +57,88 @@
   <!-- MAIN VIEWPORT -->
   <main class="flex-1 relative overflow-y-auto hide-scrollbar pb-28">
 
-    <!-- UNIVERSAL CAMERA & FOCUS VIEW (Für Kasse UND Anlernen genutzt!) -->
+    <!-- UNIVERSAL CAMERA & FOCUS VIEW -->
     <section id="view-camera" class="p-4 space-y-4 max-w-md mx-auto">
-      <div class="relative w-full aspect-square rounded-3xl overflow-hidden bg-slate-900 border border-slate-800/80 shadow-2xl group">
-        <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
+      
+      <div class="relative w-full aspect-square rounded-[2rem] overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl shadow-black/40 ring-1 ring-white/5">
+        <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover transition-opacity duration-500 opacity-0"></video>
         
         <!-- Dauerhafter Fokus-Rahmen (Center Crop) -->
-        <div class="absolute inset-0 border-[40px] border-slate-950/50 pointer-events-none flex items-center justify-center">
-          <div id="reticle-box" class="w-full h-full border-2 border-dashed border-blue-400/80 rounded-2xl flex items-center justify-center transition-all duration-300"></div>
+        <div class="absolute inset-0 border-[40px] border-slate-950/60 pointer-events-none flex items-center justify-center transition-all duration-300" id="overlay-border">
+          <div id="reticle-box" class="w-full h-full border-2 border-dashed border-blue-400/80 rounded-2xl transition-all duration-300 flex items-center justify-center relative shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+             <!-- Ecken-Marker -->
+             <div class="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-blue-400 rounded-tl-lg"></div>
+             <div class="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-blue-400 rounded-tr-lg"></div>
+             <div class="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-blue-400 rounded-bl-lg"></div>
+             <div class="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-blue-400 rounded-br-lg"></div>
+          </div>
         </div>
-
-        <div class="absolute bottom-4 left-0 right-0 text-center pointer-events-none">
-          <span class="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full bg-slate-950/80 backdrop-blur-md text-xs font-medium text-slate-200 border border-slate-800 shadow-lg">
-            <i data-lucide="scan" class="w-3.5 h-3.5 text-blue-400"></i>
-            <span id="camera-hint">Keramik im blauen Rahmen zentrieren</span>
+        
+        <div class="absolute bottom-5 left-0 right-0 text-center pointer-events-none">
+          <span class="inline-flex items-center space-x-1.5 px-4 py-2 rounded-full glass border border-white/10 text-xs font-medium text-white shadow-xl">
+            <i data-lucide="scan-line" class="w-3.5 h-3.5 text-blue-400"></i>
+            <span id="camera-hint">Keramik im Fokus zentrieren</span>
           </span>
         </div>
       </div>
 
-      <!-- DYNAMISCHER AKTIONSAKTION-BUTTON (Ändert sich je nach Modus) -->
+      <!-- DYNAMISCHER AKTION-BUTTON -->
       <div id="action-container" class="space-y-3">
-        <!-- Wird per JS befüllt (Entweder Kassen-Scan oder Anlern-Auslöser) -->
+        <!-- JS injiziert hier den Button -->
       </div>
-
-      <!-- Ergebnisse oder Status -->
-      <div id="results-container" class="space-y-2"></div>
+      
+      <!-- Ergebnisse -->
+      <div id="results-container" class="space-y-2 mt-4 pb-10"></div>
     </section>
+
 
     <!-- VIEW 2: ARTIKEL ANLERNEN (Daten Eingabe) -->
     <section id="view-add" class="p-4 space-y-4 max-w-md mx-auto hidden">
-      <div class="bg-slate-900/80 backdrop-blur-xl border border-slate-800/80 p-5 rounded-3xl space-y-5 shadow-2xl">
-        <div class="flex items-center space-x-2.5 pb-2 border-b border-slate-800">
-          <div class="p-2 rounded-xl bg-blue-500/10 text-blue-400">
+      <div class="glass border border-slate-800/80 p-5 rounded-[2rem] space-y-5 shadow-2xl">
+        <div class="flex items-center space-x-3 pb-3 border-b border-slate-800">
+          <div class="p-2.5 rounded-xl bg-blue-500/10 text-blue-400 shadow-inner">
             <i data-lucide="plus-circle" class="w-5 h-5"></i>
           </div>
           <div>
             <h2 class="font-semibold text-sm text-white">Neuen Artikel anlegen</h2>
-            <p class="text-xs text-slate-400">Name, Preis & Aufnahmen verwalten</p>
+            <p class="text-[11px] text-slate-400">Name, Preis & Vektor-Aufnahmen verwalten</p>
           </div>
         </div>
         
-        <div class="space-y-3.5">
+        <div class="space-y-4">
           <div>
-            <label class="text-xs font-medium text-slate-400 mb-1.5 block">Artikelbezeichnung</label>
-            <input type="text" id="input-name" placeholder="z.B. Tasse Henkel blau" 
-              class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-sm transition-colors">
+            <label class="text-xs font-medium text-slate-400 mb-1.5 block ml-1">Artikelbezeichnung</label>
+            <div class="relative">
+              <i data-lucide="tag" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
+              <input type="text" id="input-name" placeholder="z.B. Tasse Henkel blau" 
+                class="w-full pl-10 pr-4 py-3.5 rounded-2xl bg-slate-900/50 border border-slate-700/50 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all text-sm shadow-inner">
+            </div>
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-400 mb-1.5 block">Preis in €</label>
-            <input type="number" id="input-price" step="0.50" placeholder="19.00" 
-              class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-sm transition-colors">
+            <label class="text-xs font-medium text-slate-400 mb-1.5 block ml-1">Preis in €</label>
+            <div class="relative">
+               <i data-lucide="coins" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
+               <input type="number" id="input-price" step="0.50" placeholder="19.00" 
+                class="w-full pl-10 pr-4 py-3.5 rounded-2xl bg-slate-900/50 border border-slate-700/50 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all text-sm shadow-inner">
+            </div>
           </div>
         </div>
 
-        <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-2">
+        <div class="p-4 rounded-2xl bg-slate-900/80 border border-slate-800/80 space-y-3 shadow-inner">
           <div class="flex justify-between items-center text-sm">
-            <span class="text-slate-400 text-xs">Erfasste Winkel-Fotos:</span>
+            <span class="text-slate-400 text-xs font-medium flex items-center space-x-1.5">
+              <i data-lucide="aperture" class="w-3.5 h-3.5 text-slate-500"></i>
+              <span>Erfasste Winkel-Vektoren:</span>
+            </span>
             <span id="shot-counter" class="font-bold text-blue-400 text-xs bg-blue-950/80 border border-blue-900/50 px-2.5 py-1 rounded-lg">0</span>
           </div>
-          <p class="text-[11px] text-slate-500">Wechsle in den Kamera-Tab, halte das Objekt in den Rahmen und tippe auf "Foto aufnehmen".</p>
+          <p class="text-[11px] text-slate-500 leading-relaxed">
+            Wechsle in den <strong class="text-slate-300">Kamera-Tab</strong>, halte das Objekt in den Fokus-Rahmen und mache <strong class="text-slate-300">3-5 Fotos</strong> aus leicht verschiedenen Winkeln für maximale Robustheit.
+          </p>
         </div>
 
         <button onclick="saveNewItem()" id="btn-save-item" disabled
-          class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] transition-all font-semibold text-white shadow-lg shadow-emerald-600/25 disabled:opacity-40 disabled:pointer-events-none text-sm flex items-center justify-center space-x-2">
+          class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] transition-all flex justify-center items-center space-x-2 disabled:opacity-50 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed shadow-lg shadow-emerald-900/20 font-medium text-sm text-white">
           <i data-lucide="check" class="w-4 h-4"></i>
           <span>Artikel in Datenbank speichern</span>
         </button>
@@ -102,71 +146,210 @@
     </section>
 
     <!-- VIEW 3: INVENTAR -->
-    <section id="view-inventory" class="p-4 space-y-3 max-w-md mx-auto hidden">
-      <div class="flex justify-between items-center px-1 mb-1">
-        <h2 class="font-semibold text-xs uppercase tracking-wider text-slate-400 flex items-center space-x-1.5">
-          <i data-lucide="box" class="w-3.5 h-3.5"></i>
+    <section id="view-inventory" class="p-4 space-y-4 max-w-md mx-auto hidden pb-24">
+      <div class="flex justify-between items-center px-2 mb-2">
+        <h2 class="font-semibold text-xs uppercase tracking-widest text-slate-400 flex items-center space-x-2">
+          <i data-lucide="layers" class="w-4 h-4 text-blue-400"></i>
           <span>Sortiment & Datenbank</span>
         </h2>
-        <button onclick="clearDatabase()" class="text-xs text-rose-400 hover:underline font-medium">Alle löschen</button>
+        <button onclick="clearDatabase()" class="text-xs text-rose-400 hover:text-rose-300 transition-colors font-medium flex items-center space-x-1 px-2 py-1 rounded-lg hover:bg-rose-500/10">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          <span>Alle löschen</span>
+        </button>
       </div>
-      <div id="inventory-list" class="space-y-2"></div>
+      <div id="inventory-list" class="space-y-3"></div>
     </section>
-
   </main>
 
-  <!-- FIXED BOTTOM NAVIGATION -->
-  <nav class="absolute bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800/80 px-6 py-2.5 flex justify-around items-center z-30 shadow-2xl">
-    <button onclick="switchTab('scanner')" id="nav-scanner" class="flex flex-col items-center space-y-1 text-blue-500 transition-colors p-1">
-      <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+  <!-- FIXED BOTTOM NAVIGATION (iOS Style Tabbar) -->
+  <nav class="fixed bottom-0 left-0 right-0 glass border-t border-slate-800/80 pb-safe pt-2 px-6 flex justify-between items-center z-50">
+    <button onclick="switchTab('scanner')" id="nav-scanner" class="flex-1 flex flex-col items-center space-y-1.5 py-2 text-blue-500 transition-colors relative">
+      <i data-lucide="scan" class="w-6 h-6"></i>
       <span class="text-[10px] font-semibold tracking-wide">Kasse</span>
+      <div class="absolute -top-2 w-8 h-1 bg-blue-500 rounded-b-full shadow-[0_0_10px_rgba(59,130,246,0.8)]"></div>
     </button>
-    <button onclick="switchTab('add')" id="nav-add" class="flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200 transition-colors p-1">
-      <i data-lucide="plus-circle" class="w-5 h-5"></i>
-      <span class="text-[10px] font-semibold tracking-wide">Anlernen</span>
+    
+    <button onclick="switchTab('add')" id="nav-add" class="flex-1 flex flex-col items-center space-y-1.5 py-2 text-slate-500 hover:text-slate-300 transition-colors relative">
+      <i data-lucide="plus-square" class="w-6 h-6"></i>
+      <span class="text-[10px] font-medium tracking-wide">Anlernen</span>
+      <div class="absolute -top-2 w-8 h-1 bg-transparent rounded-b-full transition-all"></div>
     </button>
-    <button onclick="switchTab('inventory')" id="nav-inventory" class="flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200 transition-colors p-1">
-      <i data-lucide="layers" class="w-5 h-5"></i>
-      <span class="text-[10px] font-semibold tracking-wide">Inventar</span>
+    
+    <button onclick="switchTab('inventory')" id="nav-inventory" class="flex-1 flex flex-col items-center space-y-1.5 py-2 text-slate-500 hover:text-slate-300 transition-colors relative">
+      <i data-lucide="library" class="w-6 h-6"></i>
+      <span class="text-[10px] font-medium tracking-wide">Inventar</span>
+      <div class="absolute -top-2 w-8 h-1 bg-transparent rounded-b-full transition-all"></div>
     </button>
   </nav>
 
-  <!-- APP LOGIC -->
+  <!-- APP LOGIC (IndexedDB, WebWorker, Motion.dev) -->
   <script type="module">
     import { animate } from "https://cdn.jsdelivr.net/npm/motion@latest/+esm";
-    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
+    
+    // --- IndexedDB Wrapper (ersetzt localStorage für Robustheit) ---
+    const DB_NAME = 'KeramikKasseProDB';
+    const STORE_NAME = 'items';
+    let db;
 
-    env.allowLocalModels = false;
+    async function initDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onerror = (e) => reject(e);
+        request.onsuccess = (e) => { db = e.target.result; resolve(db); };
+        request.onupgradeneeded = (e) => {
+          db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+          }
+        };
+      });
+    }
 
-    let extractor = null;
-    let database = JSON.parse(localStorage.getItem('ceramic_clip_v3_db') || '[]');
+    async function getItems() {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function addItem(item) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.add(item);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function deleteItemFromDB(id) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function clearDB() {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.clear();
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    // --- State ---
+    let database = [];
     let currentShots = [];
-    let currentMode = 'scanner'; // 'scanner' oder 'training'
+    let currentMode = 'scanner'; // 'scanner' | 'training'
+    let isWorkerReady = false;
     const video = document.getElementById('webcam');
 
+    // --- WebWorker für CLIP (Verhindert UI Freezes) ---
+    const workerCode = `
+      import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
+      env.allowLocalModels = false;
+      let extractor = null;
+
+      self.onmessage = async (e) => {
+        if (e.data.type === 'init') {
+          try {
+            extractor = await pipeline('feature-extraction', 'Xenova/clip-vit-base-patch32', {
+                progress_callback: (p) => self.postMessage({ type: 'progress', data: p })
+            });
+            self.postMessage({ type: 'ready' });
+          } catch (err) {
+            self.postMessage({ type: 'error', error: err.message });
+          }
+        } else if (e.data.type === 'extract') {
+          if (!extractor) return;
+          try {
+            // raw imageData von Canvas
+            const { imageData } = e.data;
+            const output = await extractor(imageData, { pooling: 'mean', normalize: true });
+            self.postMessage({ type: 'result', vec: Array.from(output.data), reqId: e.data.reqId });
+          } catch(err) {
+             self.postMessage({ type: 'error', error: err.message });
+          }
+        }
+      };
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const worker = new Worker(URL.createObjectURL(blob), { type: 'module' });
+
+    // Request-Response Handling mit dem Worker
+    let reqCounter = 0;
+    const pendingRequests = new Map();
+
+    worker.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === 'progress') {
+         if (msg.data && msg.data.progress) {
+             document.getElementById('app-status').innerText = \`Lade Modell... \${Math.round(msg.data.progress)}%\`;
+         }
+      } else if (msg.type === 'ready') {
+        isWorkerReady = true;
+        document.getElementById('app-status').innerText = 'KI System betriebsbereit';
+        document.getElementById('app-status').className = 'text-[11px] font-medium text-emerald-400';
+        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]';
+        updateActionButtons();
+      } else if (msg.type === 'error') {
+        console.error('Worker Error:', msg.error);
+        document.getElementById('app-status').innerText = 'KI Initialisierungs-Fehler';
+        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-rose-500 shadow-lg shadow-rose-500/50';
+      } else if (msg.type === 'result') {
+        const resolve = pendingRequests.get(msg.reqId);
+        if (resolve) {
+          resolve(msg.vec);
+          pendingRequests.delete(msg.reqId);
+        }
+      }
+    };
+
+    async function extractFeaturesAsync(canvas) {
+       return new Promise((resolve) => {
+          const reqId = ++reqCounter;
+          pendingRequests.set(reqId, resolve);
+          // Transformers.js akzeptiert den DataURL in Workern, oder wir nutzen den ImageData-Trick.
+          // In Browsern funktioniert es am besten, ein Image Data-Objekt via dataURL zu extrahieren oder raw image data.
+          const dataURL = canvas.toDataURL('image/jpeg');
+          worker.postMessage({ type: 'extract', imageData: dataURL, reqId });
+       });
+    }
+
+    // --- Init ---
     async function init() {
       try {
+        await initDB();
+        database = await getItems();
+        updateUIState();
+        
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 640 } }
+          video: { facingMode: 'environment', width: { ideal: 720 }, height: { ideal: 720 } }
         });
         video.srcObject = stream;
-
-        document.getElementById('app-status').innerText = 'Lade CLIP Vision Modell...';
-        extractor = await pipeline('feature-extraction', 'Xenova/clip-vit-base-patch32');
-
-        document.getElementById('app-status').innerText = 'System betriebsbereit (CLIP)';
-        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50';
+        video.onloadedmetadata = () => {
+          video.style.opacity = '1';
+        };
         
+        worker.postMessage({ type: 'init' });
         updateActionButtons();
-        updateUIState();
       } catch (err) {
         console.error(err);
-        document.getElementById('app-status').innerText = 'Modell-Fehler';
-        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
-        alert('Fehler beim Laden von CLIP: ' + err.message);
+        document.getElementById('app-status').innerText = 'Kamera blockiert';
+        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-rose-500 shadow-lg shadow-rose-500/50';
+        alert('Fehler beim Zugriff auf die Kamera: ' + err.message);
       }
     }
 
+    // --- Navigation ---
     window.switchTab = function(tab) {
       const isCameraTab = (tab === 'scanner' || tab === 'add');
       
@@ -174,84 +357,135 @@
       document.getElementById('view-camera').classList.toggle('hidden', !isCameraTab);
       document.getElementById('view-add').classList.toggle('hidden', tab !== 'add');
       document.getElementById('view-inventory').classList.toggle('hidden', tab !== 'inventory');
-
+      
       // Modus umschalten
       currentMode = (tab === 'add') ? 'training' : 'scanner';
       updateActionButtons();
 
-      // Nav-Farben anpassen
+      // Tab UI Update
       ['scanner', 'add', 'inventory'].forEach(t => {
-        const nav = document.getElementById(`nav-${t}`);
-        if (t === tab || (tab === 'add' && t === 'scanner')) { // Highlight Kasse/Anlernen Logik
-          nav.className = 'flex flex-col items-center space-y-1 text-blue-500 transition-colors p-1';
+        const btn = document.getElementById(\`nav-\${t}\`);
+        const bar = btn.querySelector('div');
+        const icon = btn.querySelector('i');
+        const text = btn.querySelector('span');
+
+        if (t === tab || (tab === 'add' && t === 'scanner')) {
+          // Aktiv
+          btn.classList.add('text-blue-500');
+          btn.classList.remove('text-slate-500', 'hover:text-slate-300');
+          text.classList.add('font-semibold');
+          text.classList.remove('font-medium');
+          if (t === tab) {
+            bar.className = 'absolute -top-2 w-8 h-1 bg-blue-500 rounded-b-full shadow-[0_0_10px_rgba(59,130,246,0.8)]';
+          }
         } else {
-          nav.className = 'flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200 transition-colors p-1';
+          // Inaktiv
+          btn.classList.remove('text-blue-500');
+          btn.classList.add('text-slate-500', 'hover:text-slate-300');
+          text.classList.remove('font-semibold');
+          text.classList.add('font-medium');
+          bar.className = 'absolute -top-2 w-8 h-1 bg-transparent rounded-b-full transition-all';
         }
       });
 
       if(tab === 'inventory') renderInventory();
+      if(navigator.vibrate) navigator.vibrate(10);
       lucide.createIcons();
-    }
+    };
 
-    function updateActionButtons() {
+    window.updateActionButtons = function() {
       const container = document.getElementById('action-container');
       const hint = document.getElementById('camera-hint');
+      
+      const disabledClass = !isWorkerReady ? 'opacity-50 cursor-not-allowed bg-slate-800' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)]';
+      const disabledProp = !isWorkerReady ? 'disabled' : '';
 
       if (currentMode === 'scanner') {
-        hint.innerText = "Keramik im blauen Rahmen zentrieren";
-        container.innerHTML = `
-          <button onclick="performScan()" id="btn-scan" class="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] transition-all font-semibold text-white shadow-xl shadow-blue-600/25 flex items-center justify-center space-x-2 text-sm">
-            <i data-lucide="search" class="w-4 h-4"></i>
-            <span>Präzise mit CLIP scannen</span>
+        hint.innerText = "Keramik im Fokus zentrieren";
+        container.innerHTML = \`
+          <button onclick="performScan()" id="btn-scan" \${disabledProp}
+            class="w-full py-4.5 rounded-2xl \${disabledClass} active:scale-[0.98] transition-all flex justify-center items-center space-x-2.5 font-semibold text-white shadow-lg">
+            <i data-lucide="search" class="w-5 h-5"></i>
+            <span>Keramik scannen & buchen</span>
           </button>
-          <div id="results-container" class="space-y-2">
-            <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 text-center text-slate-400 text-sm flex flex-col items-center justify-center space-y-2">
-              <i data-lucide="info" class="w-5 h-5 text-slate-500"></i>
-              <span>Bereit für Kassiervorgang</span>
-            </div>
-          </div>
-        `;
+        \`;
       } else {
-        hint.innerText = "Objekt für Anlernen im Rahmen halten";
-        container.innerHTML = `
-          <button onclick="captureTrainingShot()" id="btn-shoot" class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] transition-all font-semibold text-white shadow-xl shadow-emerald-600/25 flex items-center justify-center space-x-2 text-sm">
-            <i data-lucide="camera" class="w-4 h-4"></i>
-            <span>📸 Foto aus Rahmen aufnehmen (${currentShots.length} erfasst)</span>
+        hint.innerText = "Objekt für Anlernen im Fokus halten";
+        const emeraldClass = !isWorkerReady ? 'opacity-50 cursor-not-allowed bg-slate-800' : 'bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_20px_rgba(5,150,105,0.4)]';
+        
+        container.innerHTML = \`
+          <button onclick="captureTrainingShot()" id="btn-shoot" \${disabledProp}
+            class="w-full py-4 rounded-2xl \${emeraldClass} active:scale-[0.98] transition-all flex justify-center items-center space-x-2 font-medium text-white shadow-lg">
+            <i data-lucide="camera" class="w-5 h-5"></i>
+            <span>Winkel erfassen (\${currentShots.length} gespeichert)</span>
           </button>
-          <button onclick="switchTab('add')" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center space-x-2">
-            <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
-            <span>Namen & Preis eingeben / Speichern (${currentShots.length} Fotos bereit)</span>
+          <button onclick="switchTab('add')" class="w-full py-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 active:scale-[0.98] transition-all flex justify-center items-center space-x-2 font-medium text-slate-300 shadow-inner">
+            <i data-lucide="edit-3" class="w-4 h-4"></i>
+            <span>Namen & Preis festlegen</span>
           </button>
-        `;
+        \`;
       }
       lucide.createIcons();
-    }
+    };
 
-    // Zentrum des Videos ausschneiden und als stabiles Bild an CLIP übergeben
+    // --- Computer Vision: Center Crop ---
     async function getClipEmbedding() {
       const canvas = document.createElement('canvas');
       canvas.width = 224;
       canvas.height = 224;
       const ctx = canvas.getContext('2d');
-
+      
       const vWidth = video.videoWidth || 640;
       const vHeight = video.videoHeight || 640;
       
+      // Schneide die mittleren 60% aus (exakt der Reticle-Rahmen)
       const cropSize = Math.floor(Math.min(vWidth, vHeight) * 0.6);
       const startX = Math.floor((vWidth - cropSize) / 2);
       const startY = Math.floor((vHeight - cropSize) / 2);
-
+      
       ctx.drawImage(video, startX, startY, cropSize, cropSize, 0, 0, 224, 224);
-
-      // Robustere Konvertierung direkt über den Canvas-Blob / Image-Daten für Transformers.js
-      const output = await extractor(canvas, { pooling: 'mean', normalize: true });
-      return Array.from(output.data);
+      
+      return await extractFeaturesAsync(canvas);
     }
 
+    function cosineSimilarity(vecA, vecB) {
+      let dot = 0;
+      for (let i = 0; i < vecA.length; i++) {
+        dot += vecA[i] * vecB[i];
+      }
+      return dot; // Da CLIP normalisiert ist, reicht das Skalarprodukt
+    }
+
+    function animateReticle(color) {
+      const box = document.getElementById('reticle-box');
+      const border = document.getElementById('overlay-border');
+      
+      if(color === 'success') {
+         box.className = 'w-full h-full border-2 border-emerald-400 bg-emerald-500/20 rounded-2xl transition-all duration-300 flex items-center justify-center relative shadow-[0_0_30px_rgba(16,185,129,0.5)]';
+         border.className = 'absolute inset-0 border-[40px] border-emerald-950/40 pointer-events-none flex items-center justify-center transition-all duration-300';
+         if(navigator.vibrate) navigator.vibrate([20, 50, 20]);
+      } else if (color === 'scan') {
+         box.className = 'w-full h-full border-2 border-blue-400 bg-blue-500/20 rounded-2xl transition-all duration-300 flex items-center justify-center relative shadow-[0_0_30px_rgba(59,130,246,0.6)] scale-95';
+         if(navigator.vibrate) navigator.vibrate(20);
+      } else if (color === 'error') {
+         box.className = 'w-full h-full border-2 border-rose-400 bg-rose-500/20 rounded-2xl transition-all duration-100 flex items-center justify-center relative shadow-[0_0_30px_rgba(244,63,94,0.5)]';
+         if(navigator.vibrate) navigator.vibrate(100);
+      }
+
+      setTimeout(() => {
+        box.className = 'w-full h-full border-2 border-dashed border-blue-400/80 rounded-2xl transition-all duration-300 flex items-center justify-center relative shadow-[0_0_15px_rgba(59,130,246,0.3)] scale-100';
+        border.className = 'absolute inset-0 border-[40px] border-slate-950/60 pointer-events-none flex items-center justify-center transition-all duration-300';
+      }, 400);
+    }
+
+    // --- Actions ---
     window.captureTrainingShot = async function() {
-      if (!extractor) return;
+      if (!isWorkerReady) return;
       const btn = document.getElementById('btn-shoot');
-      if(btn) btn.innerHTML = '<span>Verarbeite Foto...</span>';
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>Verarbeite Vektor...</span>';
+      lucide.createIcons();
+      animateReticle('scan');
 
       try {
         const vec = await getClipEmbedding();
@@ -260,31 +494,33 @@
         document.getElementById('shot-counter').innerText = currentShots.length;
         document.getElementById('btn-save-item').disabled = currentShots.length === 0;
         
-        const box = document.getElementById('reticle-box');
-        box.className = 'w-full h-full border-2 border-emerald-400 bg-emerald-500/10 rounded-2xl flex items-center justify-center transition-all duration-300';
-        setTimeout(() => {
-          box.className = 'w-full h-full border-2 border-dashed border-blue-400/80 rounded-2xl flex items-center justify-center transition-all duration-300';
-        }, 400);
-
-        if(navigator.vibrate) navigator.vibrate(30);
-        updateActionButtons();
+        animateReticle('success');
       } catch(e) {
         console.error(e);
-        alert('Fehler bei der Vektor-Extraktion: ' + e.message);
+        animateReticle('error');
+      } finally {
         updateActionButtons();
       }
     };
 
-    window.saveNewItem = function() {
+    window.saveNewItem = async function() {
       const name = document.getElementById('input-name').value.trim();
       const price = document.getElementById('input-price').value.trim();
+      
+      if (!name || !price) {
+        animate(document.getElementById('view-add'), { x: [-10, 10, -10, 10, 0] }, { duration: 0.4 });
+        return alert('Bitte Name und Preis eingeben!');
+      }
+      if (currentShots.length === 0) {
+        switchTab('scanner');
+        animate(document.getElementById('action-container'), { x: [-10, 10, -10, 10, 0] }, { duration: 0.4 });
+        return alert('Bitte zuerst im Kamera-Tab mindestens 1 Foto aufnehmen!');
+      }
 
-      if (!name || !price) return alert('Bitte Name und Preis eingeben!');
-      if (currentShots.length === 0) return alert('Bitte zuerst im Kamera-Tab mindestens 1 Foto aufnehmen!');
-
-      database.push({ name, price, embeddings: currentShots });
-      localStorage.setItem('ceramic_clip_v3_db', JSON.stringify(database));
-
+      await addItem({ name, price, embeddings: currentShots });
+      database = await getItems();
+      
+      // Reset
       currentShots = [];
       document.getElementById('input-name').value = '';
       document.getElementById('input-price').value = '';
@@ -293,134 +529,190 @@
       
       updateUIState();
       switchTab('scanner');
+      
+      const container = document.getElementById('results-container');
+      container.innerHTML = \`
+        <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center space-x-3 fade-enter fade-enter-active">
+           <div class="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
+             <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+           </div>
+           <div>
+             <div class="text-sm font-semibold text-white">Artikel gespeichert!</div>
+             <div class="text-xs text-emerald-400">\${name} erfolgreich an Datenbank übergeben.</div>
+           </div>
+        </div>
+      \`;
+      lucide.createIcons();
+      setTimeout(() => container.innerHTML='', 4000);
     };
 
     window.performScan = async function() {
       if (database.length === 0) {
-        alert('Bitte zuerst im Tab "Anlernen" Artikel hinterlegen!');
+        alert('Bitte zuerst Artikel anlernen!');
         switchTab('add');
         return;
       }
-
+      
       const container = document.getElementById('results-container');
-      container.innerHTML = `
-        <div class="p-6 rounded-2xl bg-slate-900 border border-slate-800 text-center text-slate-400 text-sm flex items-center justify-center space-x-2.5">
-          <svg class="animate-spin h-4 w-4 text-blue-500" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-          <span>CLIP analysiert Fokus-Bereich...</span>
+      container.innerHTML = \`
+        <div class="p-6 rounded-[2rem] glass border border-slate-800 flex flex-col items-center justify-center space-y-3 shadow-2xl">
+          <div class="relative">
+            <div class="absolute inset-0 rounded-full bg-blue-500 blur-md animate-pulse opacity-50"></div>
+            <i data-lucide="scan" class="w-8 h-8 text-blue-400 animate-spin relative"></i>
+          </div>
+          <span class="text-sm font-medium text-slate-300">Vektoranalyse via CLIP...</span>
         </div>
-      `;
+      \`;
+      lucide.createIcons();
+      animateReticle('scan');
 
       try {
         const currentVec = await getClipEmbedding();
         let scores = [];
-
+        
         for (const item of database) {
           let maxSim = -1;
           for (const vec of item.embeddings) {
-            let dot = 0;
-            for (let i = 0; i < currentVec.length; i++) {
-              dot += currentVec[i] * vec[i];
-            }
+            const dot = cosineSimilarity(currentVec, vec);
             if (dot > maxSim) maxSim = dot;
           }
           scores.push({ item, sim: maxSim });
         }
-
+        
         scores.sort((a, b) => b.sim - a.sim);
         const top3 = scores.slice(0, 3);
-
+        
         container.innerHTML = '';
         top3.forEach((res, index) => {
-          let percent = Math.round(res.sim * 100);
-          const isBest = index === 0 && percent >= 70;
+          // Strikte Skalierung: CLIP liefert selten unter 0.6 bei ähnlichen Objekten.
+          // Echtes Rauschen filtern.
+          let percent = Math.round(((res.sim - 0.55) / (0.85 - 0.55)) * 100);
+          percent = Math.max(0, Math.min(100, percent));
           
+          const isBest = index === 0 && percent >= 65;
+          if (index === 0 && isBest) animateReticle('success');
+          if (index === 0 && !isBest) animateReticle('error');
+
           const card = document.createElement('div');
-          card.className = `p-4 rounded-2xl border transition-all flex justify-between items-center ${isBest ? 'bg-emerald-950/40 border-emerald-500/60 shadow-lg shadow-emerald-950/30' : 'bg-slate-900 border-slate-800'}`;
-          card.innerHTML = `
-            <div class="flex items-center space-x-3">
-              <div class="p-2.5 rounded-xl ${isBest ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-400'}">
-                <i data-lucide="${isBest ? 'check-circle-2' : 'coffee'}" class="w-5 h-5"></i>
+          card.className = \`p-4 rounded-2xl border transition-all duration-300 flex justify-between items-center shadow-lg fade-enter \${isBest ? 'bg-emerald-950/40 border-emerald-800/50 scale-[1.02]' : 'glass border-slate-800 opacity-70'}\`;
+          
+          card.innerHTML = \`
+            <div class="flex items-center space-x-3.5">
+              <div class="p-3 rounded-xl \${isBest ? 'bg-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-slate-800 text-slate-400'}">
+                <i data-lucide="\${isBest ? 'check-circle' : 'help-circle'}" class="w-6 h-6"></i>
               </div>
               <div>
-                <div class="font-bold text-white text-sm">${res.item.name}</div>
-                <div class="text-xs text-slate-400 mt-0.5"><span class="text-white font-semibold">${res.item.price} €</span> &bull; <span class="${isBest ? 'text-emerald-400 font-medium' : 'text-slate-400'}">${percent}% Match</span></div>
+                <div class="font-bold text-white text-[15px] leading-tight">\${res.item.name}</div>
+                <div class="text-[11px] mt-1 flex items-center space-x-1.5 \${isBest ? 'text-emerald-400' : 'text-slate-500'}">
+                  <span class="font-bold bg-slate-900/50 px-1.5 py-0.5 rounded">\${percent}% Match</span>
+                  <span>&bull;</span>
+                  <span>\${res.item.price} €</span>
+                </div>
               </div>
             </div>
-            <button onclick="bookItem('${res.item.name}', '${res.item.price}')" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-semibold shadow-md flex items-center space-x-1">
-              <i data-lucide="shopping-bag" class="w-3.5 h-3.5"></i>
+            <button onclick="bookItem('\${res.item.name}', '\${res.item.price}')" class="px-5 py-3 rounded-xl \${isBest ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'} active:scale-95 transition-all font-medium text-sm flex items-center space-x-2">
+              <i data-lucide="shopping-bag" class="w-4 h-4"></i>
               <span>Buchen</span>
             </button>
-          `;
+          \`;
           container.appendChild(card);
-          animate(card, { opacity: [0, 1], y: [8, 0] }, { duration: 0.25, delay: index * 0.04 });
+          
+          // Animate In
+          setTimeout(() => card.classList.add('fade-enter-active'), index * 100);
         });
         
         lucide.createIcons();
       } catch (err) {
         console.error(err);
-        container.innerHTML = `<div class="p-6 rounded-2xl bg-slate-900 text-rose-400 text-sm text-center">Scan fehlgeschlagen: ${err.message}</div>`;
+        animateReticle('error');
+        container.innerHTML = \`<div class="p-6 rounded-[2rem] bg-rose-950/40 border border-rose-900/50 text-rose-400 text-sm text-center shadow-lg flex items-center justify-center space-x-2"><i data-lucide="alert-triangle" class="w-5 h-5"></i><span>Scan fehlgeschlagen</span></div>\`;
+        lucide.createIcons();
       }
     };
 
     window.bookItem = function(name, price) {
-      if(navigator.vibrate) navigator.vibrate(50);
-      alert(`Erfolgreich gebucht:\n${name} — ${price} €`);
+      if(navigator.vibrate) navigator.vibrate([15, 30, 15]);
+      
+      const container = document.getElementById('results-container');
+      container.innerHTML = \`
+        <div class="p-6 rounded-[2rem] bg-blue-950/40 border border-blue-900/50 text-center shadow-2xl fade-enter fade-enter-active">
+          <div class="w-16 h-16 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-3 shadow-[0_0_20px_rgba(59,130,246,0.3)]">
+            <i data-lucide="receipt" class="w-8 h-8"></i>
+          </div>
+          <div class="text-white font-bold text-lg">\${name}</div>
+          <div class="text-blue-400 font-semibold">\${price} € gebucht</div>
+        </div>
+      \`;
+      lucide.createIcons();
+      setTimeout(() => {
+         container.innerHTML = '';
+      }, 3000);
     };
 
-    function renderInventory() {
+    window.renderInventory = function() {
       const list = document.getElementById('inventory-list');
       if (database.length === 0) {
-        list.innerHTML = `
-          <div class="p-8 rounded-2xl bg-slate-900 border border-slate-800 text-center text-slate-400 text-sm flex flex-col items-center justify-center space-y-2">
-            <i data-lucide="folder-open" class="w-6 h-6 text-slate-600"></i>
-            <span>Keine Artikel vorhanden</span>
-          </div>`;
+        list.innerHTML = \`
+          <div class="p-10 rounded-[2rem] glass border border-slate-800 flex flex-col items-center justify-center text-slate-500 space-y-3">
+            <div class="p-4 rounded-full bg-slate-800/50">
+               <i data-lucide="package-open" class="w-8 h-8 text-slate-600"></i>
+            </div>
+            <span class="text-sm font-medium">Inventar ist leer</span>
+          </div>\`;
         lucide.createIcons();
         return;
       }
-      list.innerHTML = database.map((item, idx) => `
-        <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex justify-between items-center shadow-sm">
-          <div class="flex items-center space-x-3">
-            <div class="p-2 rounded-xl bg-slate-800 text-slate-300">
-              <i data-lucide="package" class="w-4 h-4"></i>
+      
+      list.innerHTML = database.map((item) => \`
+        <div class="p-4 rounded-2xl glass border border-slate-800 flex justify-between items-center shadow-lg hover:border-slate-700 transition-colors">
+          <div class="flex items-center space-x-4">
+            <div class="p-2.5 rounded-xl bg-slate-800 text-blue-400 shadow-inner">
+              <i data-lucide="box" class="w-5 h-5"></i>
             </div>
             <div>
-              <div class="font-semibold text-white text-sm">${item.name}</div>
-              <div class="text-xs text-slate-400 mt-0.5"><span class="text-slate-200 font-medium">${item.price} €</span> &bull; ${item.embeddings.length} Winkel</div>
+              <div class="font-semibold text-white text-sm">\${item.name}</div>
+              <div class="text-xs text-slate-400 mt-1 flex items-center space-x-2">
+                <span class="text-slate-300 font-medium">\${item.price} €</span>
+                <span>&bull;</span>
+                <span class="flex items-center space-x-1"><i data-lucide="focus" class="w-3 h-3"></i><span>\${item.embeddings.length} Vektoren</span></span>
+              </div>
             </div>
           </div>
-          <button onclick="deleteItem(${idx})" class="p-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-medium border border-rose-500/20 transition-colors">
+          <button onclick="deleteItem(\${item.id})" class="p-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-colors">
             <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </div>
-      `).join('');
+      \`).join('');
       lucide.createIcons();
     };
 
-    window.deleteItem = function(idx) {
-      database.splice(idx, 1);
-      localStorage.setItem('ceramic_clip_v3_db', JSON.stringify(database));
+    window.deleteItem = async function(id) {
+      if(navigator.vibrate) navigator.vibrate(20);
+      await deleteItemFromDB(id);
+      database = await getItems();
       renderInventory();
       updateUIState();
     };
 
-    window.clearDatabase = function() {
+    window.clearDatabase = async function() {
       if(confirm('Wirklich das gesamte Sortiment löschen?')) {
-        database = [];
-        localStorage.removeItem('ceramic_clip_v3_db');
+        await clearDB();
+        database = await getItems();
         renderInventory();
         updateUIState();
       }
     };
 
     function updateUIState() {
-      document.getElementById('db-badge').innerText = `${database.length} Artikel`;
+      document.getElementById('db-badge').innerText = \`\${database.length} Artikel\`;
     }
 
+    // --- Bootstrap ---
     window.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
       init();
     });
+
   </script>
 </body>
 </html>
