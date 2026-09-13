@@ -140,9 +140,14 @@ class VisionIDApp {
   // --- Real-time Loop (60 FPS Canvas + Throttled AI Inference) ---
   startLiveLoop() {
     const loop = (timestamp) => {
-      if (this.activeTab === 'scan' && this.videoEl.readyState >= 2) {
+      // Auto-resume video stream if paused by browser autoplay policy
+      if (this.videoEl && this.videoEl.paused && this.videoEl.srcObject) {
+        this.videoEl.play().catch(() => {});
+      }
+
+      if (this.activeTab === 'scan' && this.videoEl.readyState >= 1) {
         this.renderScanFrame(timestamp);
-      } else if (this.activeTab === 'train' && this.videoEl.readyState >= 2) {
+      } else if (this.activeTab === 'train' && this.videoEl.readyState >= 1) {
         this.renderTrainFrame();
       }
       requestAnimationFrame(loop);
@@ -327,12 +332,14 @@ class VisionIDApp {
   // --- Training Flow ---
   renderTrainFrame() {
     const trainCanvas = document.getElementById('train-overlay-canvas');
-    if (!trainCanvas || this.videoEl.readyState < 2) return;
+    if (!trainCanvas || this.videoEl.readyState < 1) return;
     const ctx = trainCanvas.getContext('2d');
     const w = this.videoEl.videoWidth || 640;
     const h = this.videoEl.videoHeight || 480;
-    trainCanvas.width = w;
-    trainCanvas.height = h;
+    if (trainCanvas.width !== w || trainCanvas.height !== h) {
+      trainCanvas.width = w;
+      trainCanvas.height = h;
+    }
 
     // 1. Live camera feed
     ctx.drawImage(this.videoEl, 0, 0, w, h);
@@ -575,6 +582,24 @@ class VisionIDApp {
 
     // Camera Flip
     document.getElementById('btn-flip-camera')?.addEventListener('click', () => this.camera.flipCamera());
+
+    // User gesture video unpause listener (desktop & mobile autoplay policy)
+    const unlockCamera = () => {
+      if (this.videoEl && this.videoEl.paused && this.videoEl.srcObject) {
+        this.videoEl.play().catch(console.error);
+      }
+    };
+    document.addEventListener('click', unlockCamera);
+    document.addEventListener('touchstart', unlockCamera);
+
+    // Tap on camera viewport to retry camera if not running or resume if paused
+    document.querySelector('.camera-wrapper')?.addEventListener('click', () => {
+      if (!this.camera.stream) {
+        this.startCamera();
+      } else if (this.videoEl && this.videoEl.paused) {
+        this.videoEl.play().catch(console.error);
+      }
+    });
 
     // Single Tap Manual Trigger
     document.getElementById('btn-trigger-scan')?.addEventListener('click', () => {

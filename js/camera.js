@@ -20,39 +20,77 @@ export class CameraManager {
       this.stop();
     }
 
+    // Ensure all mobile & desktop browser autoplay prerequisites are set on video element
+    this.video.muted = true;
+    this.video.defaultMuted = true;
+    this.video.playsInline = true;
+    this.video.setAttribute('playsinline', 'true');
+    this.video.setAttribute('webkit-playsinline', 'true');
+    this.video.setAttribute('muted', 'true');
+    this.video.setAttribute('autoplay', 'true');
+
     const constraints = {
       audio: false,
       video: {
-        facingMode: { ideal: this.facingMode },
+        facingMode: this.facingMode === 'environment' ? { ideal: 'environment' } : 'user',
         width: { ideal: 1280 },
         height: { ideal: 720 }
       }
     };
 
+    let stream = null;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia(constraints);
-      this.video.srcObject = this.stream;
-      await new Promise((resolve) => {
-        this.video.onloadedmetadata = () => {
-          this.syncCanvasDimensions();
-          resolve();
-        };
-      });
-      await this.video.play();
-      return true;
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch (err) {
-      console.warn('Primäre Kamera-Auflösung fehlgeschlagen, versuche Fallback...', err);
+      console.warn('Primäre Kamera-Constraints fehlgeschlagen, versuche einfachen Fallback...', err);
       try {
-        this.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        this.video.srcObject = this.stream;
-        await this.video.play();
-        this.syncCanvasDimensions();
-        return true;
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       } catch (e) {
         console.error('Kamera-Zugriff verweigert oder nicht verfügbar:', e);
         throw e;
       }
     }
+
+    this.stream = stream;
+    this.video.srcObject = stream;
+
+    // Trigger video playback immediately
+    try {
+      await this.video.play();
+    } catch (playErr) {
+      console.warn('Autoplay blockiert (User-Interaktion erforderlich):', playErr);
+      const onUserAction = () => {
+        this.video.play().catch(console.error);
+        window.removeEventListener('click', onUserAction);
+        window.removeEventListener('touchstart', onUserAction);
+        window.removeEventListener('pointerdown', onUserAction);
+      };
+      window.addEventListener('click', onUserAction, { once: true });
+      window.addEventListener('touchstart', onUserAction, { once: true });
+      window.addEventListener('pointerdown', onUserAction, { once: true });
+    }
+
+    // Wait for video frame decoding with a safety timeout (NEVER deadlock!)
+    await new Promise((resolve) => {
+      if (this.video.readyState >= 2 && this.video.videoWidth > 0) {
+        this.syncCanvasDimensions();
+        return resolve();
+      }
+      let settled = false;
+      const onFrame = () => {
+        if (settled) return;
+        settled = true;
+        this.syncCanvasDimensions();
+        resolve();
+      };
+      this.video.addEventListener('loadedmetadata', onFrame, { once: true });
+      this.video.addEventListener('loadeddata', onFrame, { once: true });
+      this.video.addEventListener('playing', onFrame, { once: true });
+      setTimeout(onFrame, 500); // 500ms safety timeout: guarantee progression
+    });
+
+    this.syncCanvasDimensions();
+    return true;
   }
 
   stop() {
