@@ -13,10 +13,12 @@ class VisionIDApp {
     this.activeTab = 'scan';
     this.contourMode = 'fast'; // 'fast' | 'neural'
     this.isModelReady = false;
+    this.isSegmenterReady = false;
     this.isExtracting = false;
     this.isSegmenting = false;
     this.database = [];
     this.currentShots = [];
+    this.downloadProgress = 0;
 
     // Pending worker requests
     this.reqCounter = 0;
@@ -45,10 +47,10 @@ class VisionIDApp {
     // Controllers
     this.camera = new CameraManager(this.videoEl, this.overlayCanvas);
     this.fastContour = new FastContourDetector();
-    this.neuralMask = null; // cached neural mask
+    this.neuralSegments = null;
 
     this.lastInferenceTime = 0;
-    this.inferenceInterval = 130; // Run AI vector search every ~130ms for low battery impact
+    this.inferenceInterval = 140; // ~7 FPS inference for stable mobile performance
   }
 
   async init() {
@@ -74,12 +76,21 @@ class VisionIDApp {
     const loadingText = document.getElementById('loading-text');
     const loadingProgress = document.getElementById('loading-progress');
 
+    // Show initial loading banner
+    if (loadingBanner) loadingBanner.classList.remove('hidden');
+
     this.worker = new Worker(new URL('./worker.js', import.meta.url));
+
+    this.worker.onerror = (err) => {
+      console.error('Worker-Fehler:', err);
+      if (loadingText) loadingText.textContent = 'Worker-Fehler: ' + (err.message || 'Script-Fehler');
+    };
 
     this.worker.onmessage = (e) => {
       const data = e.data;
 
       if (data.type === 'progress') {
+        this.downloadProgress = data.percent;
         if (loadingBanner) loadingBanner.classList.remove('hidden');
         if (loadingText) loadingText.textContent = `${data.model}: ${data.percent}%`;
         if (loadingProgress) loadingProgress.style.width = `${data.percent}%`;
@@ -91,6 +102,10 @@ class VisionIDApp {
         this.statusDot.className = 'status-indicator ready';
         this.brandStatus.textContent = 'Bereit';
         this.hudStatusText.textContent = 'Bereit für Scan';
+      } else if (data.type === 'segmenter_ready') {
+        this.isSegmenterReady = true;
+        if (loadingBanner) loadingBanner.classList.add('hidden');
+        this.hudStatusText.textContent = 'KI-Maske aktiv';
       } else if (data.type === 'extract_result') {
         const resolver = this.pendingRequests.get(data.reqId);
         if (resolver) {
@@ -100,7 +115,7 @@ class VisionIDApp {
       } else if (data.type === 'segment_result') {
         const resolver = this.pendingRequests.get(data.reqId);
         if (resolver) {
-          resolver(data.mask);
+          resolver(data.segments);
           this.pendingRequests.delete(data.reqId);
         }
       } else if (data.type === 'error') {
@@ -116,6 +131,7 @@ class VisionIDApp {
   async startCamera() {
     try {
       await this.camera.start();
+      this.hudStatusText.textContent = 'Bereit für Scan';
     } catch (err) {
       this.hudStatusText.textContent = 'Kamerazugriff erforderlich';
     }
@@ -139,15 +155,16 @@ class VisionIDApp {
     this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
 
     // 1. Draw Object Outline according to selected mode
-    let contourColor = '#38bdf8'; // Default cyan searching color
+    let contourColor = '#38bdf8'; // Default cyan outline
     if (this.currentBestMatch && this.currentBestMatch.confidence >= 70) {
-      contourColor = '#34d399'; // Emerald match color
+      contourColor = '#34d399'; // Emerald match outline
     }
 
     if (this.contourMode === 'fast') {
-      this.fastContour.detectAndDraw(this.videoEl, this.overlayCtx, coords, contourColor, 2.5);
-    } else if (this.contourMode === 'neural' && this.neuralMask) {
-      this.renderNeuralMask(coords, contourColor);
+      // Draws ONLY a crisp outline when an object is in view; otherwise draws nothing!
+      this.fastContour.detectAndDraw(this.videoEl, this.overlayCtx, coords, contourColor, 2);
+    } else if (this.contourMode === 'neural' && this.neuralSegments) {
+      this.renderNeuralBoundingBox(coords, contourColor);
     }
 
     // 2. Trigger async inference if ready and interval elapsed
@@ -166,15 +183,18 @@ class VisionIDApp {
 
     this.isExtracting = true;
     try {
-      const { imageBitmap, imageData } = await this.camera.grabCrop(coords, 224);
+      const crop = this.camera.grabCrop(coords, 224);
 
-      // Async Deep Feature Extraction in Worker
+      // Async Deep Feature Extraction in Worker using Transferable ArrayBuffer
       const reqId = ++this.reqCounter;
       const extractPromise = new Promise((resolve) => this.pendingRequests.set(reqId, resolve));
-      this.worker.postMessage({ type: 'extract', reqId, imageBitmap }, [imageBitmap]);
+      this.worker.postMessage(
+        { type: 'extract', reqId, buffer: crop.buffer, width: crop.width, height: crop.height },
+        [crop.buffer]
+      );
 
       // Spatial Color Descriptor in Main Thread
-      const colorVector = extractSpatialColorDescriptor(imageData);
+      const colorVector = extractSpatialColorDescriptor(crop.imageData);
 
       const deepVector = await extractPromise;
       if (deepVector) {
@@ -182,9 +202,9 @@ class VisionIDApp {
         this.handleMatchResult(match);
       }
 
-      // If neural segmentation mode is active, fetch mask occasionally
-      if (this.contourMode === 'neural' && !this.isSegmenting) {
-        this.fetchNeuralMask(coords);
+      // If neural segmentation mode is active, fetch segmentation occasionally
+      if (this.contourMode === 'neural' && this.isSegmenterReady && !this.isSegmenting) {
+        this.fetchNeuralSegments(coords);
       }
     } catch (err) {
       console.warn('Inferenz-Aussetzer:', err);
@@ -193,14 +213,17 @@ class VisionIDApp {
     }
   }
 
-  async fetchNeuralMask(coords) {
+  async fetchNeuralSegments(coords) {
     this.isSegmenting = true;
     try {
-      const { imageBitmap } = await this.camera.grabCrop(coords, 224);
+      const crop = this.camera.grabCrop(coords, 224);
       const reqId = ++this.reqCounter;
       const segmentPromise = new Promise((resolve) => this.pendingRequests.set(reqId, resolve));
-      this.worker.postMessage({ type: 'segment', reqId, imageBitmap }, [imageBitmap]);
-      this.neuralMask = await segmentPromise;
+      this.worker.postMessage(
+        { type: 'segment', reqId, buffer: crop.buffer, width: crop.width, height: crop.height },
+        [crop.buffer]
+      );
+      this.neuralSegments = await segmentPromise;
     } catch (e) {
       // ignore
     } finally {
@@ -208,14 +231,12 @@ class VisionIDApp {
     }
   }
 
-  renderNeuralMask(coords, color) {
-    // Render the neural segmentation outline/mask over the reticle
+  renderNeuralBoundingBox(coords, color) {
+    // Render clean neural contour box around the object
     this.overlayCtx.save();
     this.overlayCtx.strokeStyle = color;
-    this.overlayCtx.lineWidth = 2.5;
-    this.overlayCtx.shadowColor = color;
-    this.overlayCtx.shadowBlur = 8;
-    this.overlayCtx.strokeRect(coords.x + 8, coords.y + 8, coords.width - 16, coords.height - 16);
+    this.overlayCtx.lineWidth = 2;
+    this.overlayCtx.strokeRect(coords.x + 6, coords.y + 6, coords.width - 12, coords.height - 12);
     this.overlayCtx.restore();
   }
 
@@ -223,11 +244,9 @@ class VisionIDApp {
     this.currentBestMatch = match;
 
     if (match) {
-      // Visual reticle match state
       this.reticleCornersEl.classList.add('match-found');
       this.hudStatusText.textContent = `Erkannt: ${match.item.name}`;
 
-      // Update Floating Result Card
       this.resultName.textContent = match.item.name;
       this.resultThumb.src = match.item.thumbnail || match.item.shots[0]?.thumb || '';
       this.confidenceBadge.textContent = `${match.confidence}% Match`;
@@ -240,7 +259,6 @@ class VisionIDApp {
 
       this.resultCard.classList.add('visible', 'match');
 
-      // Subtle Haptic & Audio Feedback (once per 2.5 seconds)
       const now = Date.now();
       if (now - this.lastMatchSoundTime > 2500) {
         this.lastMatchSoundTime = now;
@@ -270,8 +288,8 @@ class VisionIDApp {
       const osc = this.audioCtx.createOscillator();
       const gain = this.audioCtx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, this.audioCtx.currentTime); // A5
-      osc.frequency.exponentialRampToValueAtTime(1320, this.audioCtx.currentTime + 0.08); // E6
+      osc.frequency.setValueAtTime(880, this.audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1320, this.audioCtx.currentTime + 0.08);
       gain.gain.setValueAtTime(0.04, this.audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.12);
       osc.connect(gain);
@@ -279,33 +297,43 @@ class VisionIDApp {
       osc.start();
       osc.stop(this.audioCtx.currentTime + 0.12);
     } catch (e) {
-      // Audio not permitted or not supported
+      // ignore
     }
   }
 
-  // --- Training Flow ---
+  // --- Training Flow (Fixes black screen bug!) ---
   renderTrainFrame() {
     const trainCanvas = document.getElementById('train-overlay-canvas');
-    if (!trainCanvas) return;
+    if (!trainCanvas || this.videoEl.readyState < 2) return;
     const ctx = trainCanvas.getContext('2d');
-    trainCanvas.width = this.videoEl.videoWidth || 640;
-    trainCanvas.height = this.videoEl.videoHeight || 480;
-    ctx.clearRect(0, 0, trainCanvas.width, trainCanvas.height);
+    const w = this.videoEl.videoWidth || 640;
+    const h = this.videoEl.videoHeight || 480;
+    trainCanvas.width = w;
+    trainCanvas.height = h;
 
-    const reticleRect = {
-      x: trainCanvas.width * 0.15,
-      y: trainCanvas.height * 0.15,
-      width: trainCanvas.width * 0.7,
-      height: trainCanvas.height * 0.7
-    };
+    // 1. DRAW LIVE CAMERA STREAM! (Fixes black screen in training tab!)
+    ctx.drawImage(this.videoEl, 0, 0, w, h);
 
-    // Draw active contour in training view (neutral white/cyan)
-    this.fastContour.detectAndDraw(this.videoEl, ctx, reticleRect, 'rgba(255, 255, 255, 0.75)', 2);
+    // 2. Draw subtle target reticle
+    const rw = w * 0.7;
+    const rh = h * 0.7;
+    const rx = (w - rw) / 2;
+    const ry = (h - rh) / 2;
+    const reticleRect = { x: rx, y: ry, width: rw, height: rh };
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(rx, ry, rw, rh);
+    ctx.restore();
+
+    // 3. Draw object contour if present
+    this.fastContour.detectAndDraw(this.videoEl, ctx, reticleRect, '#38bdf8', 2);
   }
 
   async captureTrainingShot() {
     if (!this.isModelReady) {
-      alert('Vision-Modell lädt noch...');
+      alert(`Vision-Modell lädt noch (${this.downloadProgress}%)... Bitte kurz warten.`);
       return;
     }
 
@@ -319,28 +347,32 @@ class VisionIDApp {
     btn.textContent = 'Verarbeite Bild...';
 
     try {
-      const coords = {
-        x: (this.videoEl.videoWidth || 640) * 0.15,
-        y: (this.videoEl.videoHeight || 480) * 0.15,
-        width: (this.videoEl.videoWidth || 640) * 0.7,
-        height: (this.videoEl.videoHeight || 480) * 0.7
-      };
+      const w = this.videoEl.videoWidth || 640;
+      const h = this.videoEl.videoHeight || 480;
+      const rw = w * 0.7;
+      const rh = h * 0.7;
+      const rx = (w - rw) / 2;
+      const ry = (h - rh) / 2;
 
-      const { imageBitmap, imageData, thumbDataUrl } = await this.camera.grabCrop(coords, 224);
+      const coords = { x: rx, y: ry, width: rw, height: rh };
+      const crop = this.camera.grabCrop(coords, 224);
 
-      // Extract deep vector in worker
+      // Extract deep vector in worker using transferable ArrayBuffer
       const reqId = ++this.reqCounter;
       const extractPromise = new Promise((resolve) => this.pendingRequests.set(reqId, resolve));
-      this.worker.postMessage({ type: 'extract', reqId, imageBitmap }, [imageBitmap]);
+      this.worker.postMessage(
+        { type: 'extract', reqId, buffer: crop.buffer, width: crop.width, height: crop.height },
+        [crop.buffer]
+      );
 
-      const colorVector = extractSpatialColorDescriptor(imageData);
+      const colorVector = extractSpatialColorDescriptor(crop.imageData);
       const deepVector = await extractPromise;
 
       if (deepVector) {
         this.currentShots.push({
           deepVector,
           colorVector,
-          thumb: thumbDataUrl
+          thumb: crop.thumbDataUrl
         });
 
         this.renderSnapshotSlots();
@@ -400,18 +432,15 @@ class VisionIDApp {
         shots: this.currentShots
       });
 
-      // Reload DB
       this.database = await db.getAllObjects();
       this.updateLibraryCount();
       this.renderLibrary();
 
-      // Reset Form
       this.currentShots = [];
       nameInput.value = '';
       this.renderSnapshotSlots();
       this.updateCaptureButtonText();
 
-      // Switch to Scan Tab
       this.switchTab('scan');
       this.hudStatusText.textContent = `„${name}“ gespeichert`;
       setTimeout(() => {
@@ -500,6 +529,14 @@ class VisionIDApp {
     document.getElementById('btn-contour-fast').classList.toggle('active', mode === 'fast');
     document.getElementById('btn-contour-neural').classList.toggle('active', mode === 'neural');
     this.fastContour.reset();
+
+    if (mode === 'neural' && !this.isSegmenterReady) {
+      const banner = document.getElementById('loading-banner');
+      const text = document.getElementById('loading-text');
+      if (banner) banner.classList.remove('hidden');
+      if (text) text.textContent = 'Lade KI-Segmentierer...';
+      this.worker.postMessage({ type: 'load_segmenter' });
+    }
   }
 
   bindEvents() {

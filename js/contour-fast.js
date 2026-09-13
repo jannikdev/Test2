@@ -1,145 +1,156 @@
 /**
- * Fast Real-time Contour & Edge Tracker (Mode 1: 0 MB, ~5ms, 60fps)
- * Computes gradient salience and traces the prominent object contour inside the viewfinder.
+ * Fast Real-time Edge & Object Contour Tracker (Mode 1: 0 MB, ~5ms, 60fps)
+ * Traces ONLY genuine object boundaries.
+ * When no object is present, it draws NOTHING (no blobs, no false circles).
  */
 export class FastContourDetector {
   constructor() {
     this.offscreen = document.createElement('canvas');
     this.offCtx = this.offscreen.getContext('2d', { willReadFrequently: true });
-    this.smoothedContour = null;
-    this.smoothingAlpha = 0.35; // Exponential smoothing to prevent edge jitter
+    this.smoothedPoints = null;
+    this.smoothingFactor = 0.4;
+    this.hasObject = false;
   }
 
   /**
-   * Process a frame and draw the object contour directly to targetCtx
+   * Process a frame and draw a crisp outline ONLY if an object is present
    * @param {HTMLVideoElement|HTMLCanvasElement} source - Video source
    * @param {CanvasRenderingContext2D} targetCtx - Overlay canvas context
    * @param {Object} reticleRect - { x, y, width, height } in canvas coords
    * @param {string} strokeColor - CSS color for the contour outline
-   * @param {number} lineWidth - Width of contour line
-   * @returns {Object|null} Bounding box { x, y, width, height, points } or null
+   * @param {number} lineWidth - Width of contour line (default 2)
    */
-  detectAndDraw(source, targetCtx, reticleRect, strokeColor = '#38bdf8', lineWidth = 2.5) {
+  detectAndDraw(source, targetCtx, reticleRect, strokeColor = '#38bdf8', lineWidth = 2) {
     const rx = Math.max(0, Math.floor(reticleRect.x));
     const ry = Math.max(0, Math.floor(reticleRect.y));
     const rw = Math.min(source.videoWidth || source.width, Math.floor(reticleRect.width));
     const rh = Math.min(source.videoHeight || source.height, Math.floor(reticleRect.height));
 
-    if (rw <= 20 || rh <= 20) return null;
+    if (rw <= 30 || rh <= 30) {
+      this.smoothedPoints = null;
+      return null;
+    }
 
-    // Downscale for fast ~5ms processing: analyze at fixed 140x140
-    const sampleW = 140;
-    const sampleH = 140;
-    this.offscreen.width = sampleW;
-    this.offscreen.height = sampleH;
+    // Downscale to 120x120 for fast ~4ms analysis
+    const sampleSize = 120;
+    this.offscreen.width = sampleSize;
+    this.offscreen.height = sampleSize;
 
-    this.offCtx.drawImage(source, rx, ry, rw, rh, 0, 0, sampleW, sampleH);
-    const imgData = this.offCtx.getImageData(0, 0, sampleW, sampleH);
+    this.offCtx.drawImage(source, rx, ry, rw, rh, 0, 0, sampleSize, sampleSize);
+    const imgData = this.offCtx.getImageData(0, 0, sampleSize, sampleSize);
     const data = imgData.data;
 
-    // 1. Grayscale & Edge Gradient (Sobel approximation)
-    const gray = new Uint8Array(sampleW * sampleH);
+    // 1. Grayscale conversion
+    const gray = new Uint8Array(sampleSize * sampleSize);
     for (let i = 0; i < data.length; i += 4) {
-      // Fast luminance: 0.299R + 0.587G + 0.114B
       gray[i >> 2] = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
     }
 
-    const edges = new Uint8Array(sampleW * sampleH);
-    let edgeSum = 0;
-    let edgeCount = 0;
+    // 2. Sobel Edge Gradient
+    const edges = new Uint8Array(sampleSize * sampleSize);
+    let strongEdgeCount = 0;
+    let sumX = 0;
+    let sumY = 0;
 
-    for (let y = 1; y < sampleH - 1; y++) {
-      const row = y * sampleW;
-      for (let x = 1; x < sampleW - 1; x++) {
+    for (let y = 1; y < sampleSize - 1; y++) {
+      const row = y * sampleSize;
+      for (let x = 1; x < sampleSize - 1; x++) {
         const idx = row + x;
-        // Fast Sobel gradient
         const gx =
-          -gray[idx - sampleW - 1] + gray[idx - sampleW + 1]
+          -gray[idx - sampleSize - 1] + gray[idx - sampleSize + 1]
           - (gray[idx - 1] << 1) + (gray[idx + 1] << 1)
-          - gray[idx + sampleW - 1] + gray[idx + sampleW + 1];
+          - gray[idx + sampleSize - 1] + gray[idx + sampleSize + 1];
 
         const gy =
-          -gray[idx - sampleW - 1] - (gray[idx - sampleW] << 1) - gray[idx - sampleW + 1]
-          + gray[idx + sampleW - 1] + (gray[idx + sampleW] << 1) + gray[idx + sampleW + 1];
+          -gray[idx - sampleSize - 1] - (gray[idx - sampleSize] << 1) - gray[idx - sampleSize + 1]
+          + gray[idx + sampleSize - 1] + (gray[idx + sampleSize] << 1) + gray[idx + sampleSize + 1];
 
         const mag = Math.abs(gx) + Math.abs(gy);
-        edges[idx] = mag > 255 ? 255 : mag;
-        if (mag > 40) {
-          edgeSum += mag;
-          edgeCount++;
+        if (mag > 65) {
+          edges[idx] = 255;
+          strongEdgeCount++;
+          sumX += x;
+          sumY += y;
         }
       }
     }
 
-    const avgEdge = edgeCount > 0 ? (edgeSum / edgeCount) * 0.75 : 55;
-    const threshold = Math.max(45, Math.min(120, avgEdge));
+    // 3. Significance Check: Is an actual object present?
+    // At least 2% and at most 45% of pixels must be strong edges (otherwise it's blank wall or extreme noise)
+    const minEdges = (sampleSize * sampleSize) * 0.018; // ~260 pixels
+    const maxEdges = (sampleSize * sampleSize) * 0.45;
 
-    // 2. Find Radial Extreme Boundary Points from Center (Convex / Radial Contour)
-    const centerX = sampleW / 2;
-    const centerY = sampleH / 2;
-    const numRays = 36; // 36 radial rays (every 10 degrees) for smooth contour
-    const rawPoints = [];
+    if (strongEdgeCount < minEdges || strongEdgeCount > maxEdges) {
+      // NO object detected: Fade out and draw NOTHING!
+      this.smoothedPoints = null;
+      this.hasObject = false;
+      return null;
+    }
+
+    this.hasObject = true;
+    const centerX = sumX / strongEdgeCount;
+    const centerY = sumY / strongEdgeCount;
+
+    // 4. Radial Ray-Casting from Center of Mass
+    const numRays = 24;
+    const validPoints = [];
+    const maxRadius = sampleSize * 0.46;
 
     for (let i = 0; i < numRays; i++) {
       const angle = (i * 2 * Math.PI) / numRays;
       const cosA = Math.cos(angle);
       const sinA = Math.sin(angle);
-      const maxRadius = Math.min(sampleW, sampleH) * 0.46;
 
-      let foundR = 0;
-      // Scan outward from center to find first solid edge transition
+      let edgeRadius = 0;
+      // Scan outward from center to outer limit
       for (let r = 8; r < maxRadius; r += 2) {
         const px = Math.round(centerX + cosA * r);
         const py = Math.round(centerY + sinA * r);
-        if (px < 1 || px >= sampleW - 1 || py < 1 || py >= sampleH - 1) break;
+        if (px < 1 || px >= sampleSize - 1 || py < 1 || py >= sampleSize - 1) break;
 
-        const idx = py * sampleW + px;
-        if (edges[idx] > threshold) {
-          foundR = r;
-          // Look slightly ahead to see if edge continues
-          const nextPx = Math.round(centerX + cosA * (r + 4));
-          const nextPy = Math.round(centerY + sinA * (r + 4));
-          if (nextPx >= 1 && nextPx < sampleW - 1 && nextPy >= 1 && nextPy < sampleH - 1) {
-            if (edges[nextPy * sampleW + nextPx] > threshold * 0.8) {
-              foundR = r + 2;
-            }
-          }
+        if (edges[py * sampleSize + px] === 255) {
+          edgeRadius = r;
         }
       }
 
-      // If no strong edge found on this ray, default to fallback boundary
-      const radius = foundR > 10 ? foundR : maxRadius * 0.65;
-
-      // Map back to canvas coordinates
-      const normX = (centerX + cosA * radius) / sampleW;
-      const normY = (centerY + sinA * radius) / sampleH;
-      rawPoints.push({
-        x: rx + normX * rw,
-        y: ry + normY * rh
-      });
-    }
-
-    // 3. Temporal Smoothing (EMA) to eliminate jumpy contour lines
-    if (!this.smoothedContour || this.smoothedContour.length !== rawPoints.length) {
-      this.smoothedContour = rawPoints.map(p => ({ x: p.x, y: p.y }));
-    } else {
-      for (let i = 0; i < rawPoints.length; i++) {
-        this.smoothedContour[i].x += (rawPoints[i].x - this.smoothedContour[i].x) * this.smoothingAlpha;
-        this.smoothedContour[i].y += (rawPoints[i].y - this.smoothedContour[i].y) * this.smoothingAlpha;
+      // Only record point if an actual edge was found along this ray!
+      if (edgeRadius > 6) {
+        const normX = (centerX + cosA * edgeRadius) / sampleSize;
+        const normY = (centerY + sinA * edgeRadius) / sampleSize;
+        validPoints.push({
+          x: rx + normX * rw,
+          y: ry + normY * rh
+        });
       }
     }
 
-    // 4. Render smooth spline curve on targetCtx
+    // If fewer than 8 rays found an edge, object is incomplete -> do not render
+    if (validPoints.length < 8) {
+      this.smoothedPoints = null;
+      return null;
+    }
+
+    // 5. Exponential Smoothing across frames to prevent jitter
+    if (!this.smoothedPoints || this.smoothedPoints.length !== validPoints.length) {
+      this.smoothedPoints = validPoints.map(p => ({ x: p.x, y: p.y }));
+    } else {
+      for (let i = 0; i < validPoints.length; i++) {
+        this.smoothedPoints[i].x += (validPoints[i].x - this.smoothedPoints[i].x) * this.smoothingFactor;
+        this.smoothedPoints[i].y += (validPoints[i].y - this.smoothedPoints[i].y) * this.smoothingFactor;
+      }
+    }
+
+    // 6. Draw Crisp Outline (Stroke ONLY, NO solid fill!)
     targetCtx.save();
     targetCtx.strokeStyle = strokeColor;
     targetCtx.lineWidth = lineWidth;
     targetCtx.lineJoin = 'round';
     targetCtx.lineCap = 'round';
     targetCtx.shadowColor = strokeColor;
-    targetCtx.shadowBlur = 8;
+    targetCtx.shadowBlur = 6;
 
     targetCtx.beginPath();
-    const pts = this.smoothedContour;
+    const pts = this.smoothedPoints;
     const len = pts.length;
 
     targetCtx.moveTo((pts[0].x + pts[len - 1].x) / 2, (pts[0].y + pts[len - 1].y) / 2);
@@ -150,33 +161,17 @@ export class FastContourDetector {
       targetCtx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
     }
     targetCtx.closePath();
-    targetCtx.stroke();
-
-    // Subtle inner glow
-    targetCtx.fillStyle = strokeColor.replace(')', ', 0.05)').replace('rgb', 'rgba');
-    targetCtx.fill();
+    targetCtx.stroke(); // STROKE ONLY!
 
     targetCtx.restore();
 
-    // Calculate bounding box of contour
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const p of pts) {
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
-    }
-
     return {
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY,
       points: pts
     };
   }
 
   reset() {
-    this.smoothedContour = null;
+    this.smoothedPoints = null;
+    this.hasObject = false;
   }
 }

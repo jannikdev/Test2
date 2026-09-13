@@ -1,7 +1,7 @@
 /**
  * Camera & Frame Acquisition Manager
  * Handles camera stream, resolution adaptation, reticle coordinate mapping,
- * and zero-copy ImageBitmap extraction for the Web Worker.
+ * and zero-copy ArrayBuffer extraction for the Web Worker.
  */
 
 export class CameraManager {
@@ -42,7 +42,6 @@ export class CameraManager {
       return true;
     } catch (err) {
       console.warn('Primäre Kamera-Auflösung fehlgeschlagen, versuche Fallback...', err);
-      // Fallback: minimal constraints
       try {
         this.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         this.video.srcObject = this.stream;
@@ -87,7 +86,6 @@ export class CameraManager {
     const vWidth = this.video.videoWidth || 640;
     const vHeight = this.video.videoHeight || 480;
 
-    // Determine scale and letterboxing of object-fit: cover
     const scale = Math.max(videoRect.width / vWidth, videoRect.height / vHeight);
     const displayedW = vWidth * scale;
     const displayedH = vHeight * scale;
@@ -108,11 +106,11 @@ export class CameraManager {
 
   /**
    * Extract high-performance cropped frame
-   * Returns an ImageBitmap (for transfer to Worker) and ImageData (for spatial color analysis)
+   * Returns a 3-channel RGB ArrayBuffer (for transfer to Worker) and ImageData (for spatial color analysis)
    * @param {Object} coords - { x, y, width, height }
-   * @param {number} targetSize - Normalization size (e.g. 224 for DINOv2)
+   * @param {number} targetSize - Normalization size (224 for DINOv2)
    */
-  async grabCrop(coords, targetSize = 224) {
+  grabCrop(coords, targetSize = 224) {
     this.cropCanvas.width = targetSize;
     this.cropCanvas.height = targetSize;
 
@@ -123,15 +121,22 @@ export class CameraManager {
     );
 
     const imageData = this.cropCtx.getImageData(0, 0, targetSize, targetSize);
-    
-    // Create zero-copy Transferable ImageBitmap for worker
-    const imageBitmap = await createImageBitmap(this.cropCanvas);
+    const rgba = imageData.data;
 
-    // Also small thumbnail for storage
+    // Convert 4-channel RGBA to 3-channel RGB Uint8Array
+    const rgb = new Uint8Array(targetSize * targetSize * 3);
+    for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+      rgb[j] = rgba[i];
+      rgb[j + 1] = rgba[i + 1];
+      rgb[j + 2] = rgba[i + 2];
+    }
+
     const thumbDataUrl = this.cropCanvas.toDataURL('image/jpeg', 0.85);
 
     return {
-      imageBitmap,
+      buffer: rgb.buffer,
+      width: targetSize,
+      height: targetSize,
       imageData,
       thumbDataUrl
     };
