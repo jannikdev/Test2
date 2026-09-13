@@ -26,9 +26,18 @@ async function run() {
     const W = img.width;
     const H = img.height;
 
-    // Prompt point at center
-    const input_points = [[[[W / 2, H / 2]]]];
-    const input_labels = [[[1]]];
+    // Multi-point prompt support for complex multi-part objects (sunglasses, scissors, headphones, watch)
+    const customPoints = {
+      '02': [[0.5, 0.5]], // Werkzeug-Set
+      '03': [[0.35, 0.45], [0.65, 0.35]], // Schere: upper blade + lower handle
+      '05': [[0.4, 0.5], [0.65, 0.65]], // Armbanduhr: dial + strap
+      '07': [[0.38, 0.63], [0.63, 0.63]], // Sonnenbrille: left lens + right lens
+      '08': [[0.43, 0.58], [0.55, 0.28], [0.75, 0.65]] // Kopfhörer: left earcup + headband + right earcup
+    };
+
+    const pts = customPoints[id] || [[0.5, 0.5]];
+    const input_points = [[pts.map(p => [p[0] * W, p[1] * H])]];
+    const input_labels = [[pts.map(() => 1)]];
 
     const inputs = await processor(img, input_points, input_labels);
     const outputs = await model(inputs);
@@ -44,41 +53,45 @@ async function run() {
 
     const rawMask = masks[0].data.subarray(chosenIdx * W * H, (chosenIdx + 1) * W * H);
 
-    // Connected component flood-fill from query point (removes all isolated background / shadow noise)
-    const cx = Math.floor(W / 2);
-    const cy = Math.floor(H / 2);
-    let seedX = cx, seedY = cy;
-    if (rawMask[cy * W + cx] !== 1) {
-      let found = false;
-      for (let r = 1; r < 60 && !found; r++) {
-        for (let dy = -r; dy <= r && !found; dy++) {
-          for (let dx = -r; dx <= r && !found; dx++) {
-            const px = cx + dx, py = cy + dy;
-            if (px >= 0 && px < W && py >= 0 && py < H && rawMask[py * W + px] === 1) {
-              seedX = px; seedY = py; found = true;
+    // Connected component flood-fill seeded from all prompt points
+    const cleanMask = new Uint8Array(W * H);
+    const queue = [];
+
+    for (const p of pts) {
+      const px = Math.floor(p[0] * W);
+      const py = Math.floor(p[1] * H);
+      let seedX = px, seedY = py;
+      if (rawMask[py * W + px] !== 1) {
+        let found = false;
+        for (let r = 1; r < 50 && !found; r++) {
+          for (let dy = -r; dy <= r && !found; dy++) {
+            for (let dx = -r; dx <= r && !found; dx++) {
+              const nx = px + dx, ny = py + dy;
+              if (nx >= 0 && nx < W && ny >= 0 && ny < H && rawMask[ny * W + nx] === 1) {
+                seedX = nx; seedY = ny; found = true;
+              }
             }
           }
         }
       }
+      if (rawMask[seedY * W + seedX] === 1 && cleanMask[seedY * W + seedX] === 0) {
+        cleanMask[seedY * W + seedX] = 1;
+        queue.push(seedY * W + seedX);
+      }
     }
 
-    const cleanMask = new Uint8Array(W * H);
-    if (rawMask[seedY * W + seedX] === 1) {
-      const queue = [seedY * W + seedX];
-      cleanMask[seedY * W + seedX] = 1;
-      let head = 0;
-      while (head < queue.length) {
-        const idx = queue[head++];
-        const x = idx % W;
-        const y = Math.floor(idx / W);
-        const nbs = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
-        for (const [nx, ny] of nbs) {
-          if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
-            const nidx = ny * W + nx;
-            if (cleanMask[nidx] === 0 && rawMask[nidx] === 1) {
-              cleanMask[nidx] = 1;
-              queue.push(nidx);
-            }
+    let head = 0;
+    while (head < queue.length) {
+      const idx = queue[head++];
+      const x = idx % W;
+      const y = Math.floor(idx / W);
+      const nbs = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+      for (const [nx, ny] of nbs) {
+        if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
+          const nidx = ny * W + nx;
+          if (cleanMask[nidx] === 0 && rawMask[nidx] === 1) {
+            cleanMask[nidx] = 1;
+            queue.push(nidx);
           }
         }
       }
