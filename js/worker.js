@@ -7,15 +7,29 @@
 
 /* global importScripts */
 
-// Load transformers library: try local bundle first, with CDN fallbacks
-try {
-  importScripts('./transformers.min.js');
-} catch (errLocal) {
+// Load transformers library: try local bundle first with cache-busting, then fallbacks
+const scriptCandidates = [
+  './transformers.min.js?v=2.17.2',
+  './transformers.min.js',
+  'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js',
+  'https://unpkg.com/@xenova/transformers@2.17.2/dist/transformers.min.js'
+];
+
+for (const src of scriptCandidates) {
+  if (self.transformers) break;
   try {
-    importScripts('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js');
-  } catch (errCdn) {
-    importScripts('https://unpkg.com/@xenova/transformers@2.17.2/dist/transformers.min.js');
+    importScripts(src);
+    if (self.transformers) {
+      console.log('Transformers.js erfolgreich geladen von:', src);
+      break;
+    }
+  } catch (err) {
+    console.warn('Konnte Transformers nicht laden von ' + src + ':', err);
   }
+}
+
+if (!self.transformers) {
+  throw new Error('Konnte transformers.min.js weder lokal noch über CDNs laden.');
 }
 
 const { pipeline, env, RawImage, SamModel, AutoProcessor } = self.transformers;

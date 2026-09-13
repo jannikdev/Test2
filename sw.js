@@ -1,4 +1,4 @@
-const CACHE_NAME = 'visionid-v2';
+const CACHE_NAME = 'visionid-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
