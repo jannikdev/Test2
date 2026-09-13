@@ -233,6 +233,10 @@ export class FastContourDetector {
       targetCtx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
     }
     targetCtx.closePath();
+
+    // Semi-transparent AR highlight overlay
+    targetCtx.fillStyle = strokeColor.includes('#') ? `${strokeColor}33` : 'rgba(16, 185, 129, 0.22)';
+    targetCtx.fill();
     targetCtx.stroke();
 
     targetCtx.restore();

@@ -9,7 +9,7 @@ import sharp from 'sharp';
 
 const TEST_OBJECTS = [
   { id: 1, name: "Kaffeebecher", file: "raw_01.jpg" },
-  { id: 2, name: "Schraubenschlüssel", file: "raw_02.jpg" },
+  { id: 2, name: "Werkzeug-Set", file: "raw_02.jpg" },
   { id: 3, name: "Schere", file: "raw_03.jpg" },
   { id: 4, name: "Smartphone", file: "raw_04.jpg" },
   { id: 5, name: "Armbanduhr", file: "raw_05.jpg" },
@@ -18,16 +18,16 @@ const TEST_OBJECTS = [
   { id: 8, name: "Kopfhörer", file: "raw_08.jpg" },
   { id: 9, name: "Sneaker", file: "raw_09.jpg" },
   { id: 10, name: "Buch", file: "raw_10.jpg" },
-  { id: 11, name: "Heftgerät", file: "raw_11.jpg" },
-  { id: 12, name: "Vase", file: "raw_12.jpg" },
+  { id: 11, name: "Justitia-Statue", file: "raw_11.jpg" },
+  { id: 12, name: "Keramik-Teller", file: "raw_12.jpg" },
   { id: 13, name: "Hammer", file: "raw_13.jpg" },
-  { id: 14, name: "Schlüssel", file: "raw_14.jpg" },
+  { id: 14, name: "Autoschlüssel", file: "raw_14.jpg" },
   { id: 15, name: "Trinkflasche", file: "raw_15.jpg" },
   { id: 16, name: "Computermaus", file: "raw_16.jpg" },
   { id: 17, name: "Banane", file: "raw_17.jpg" },
-  { id: 18, name: "Glühbirne", file: "raw_18.jpg" },
+  { id: 18, name: "Glühbirne (Hand)", file: "raw_18.jpg" },
   { id: 19, name: "Parfümflasche", file: "raw_19.jpg" },
-  { id: 20, name: "Schraubendreher", file: "raw_20.jpg" }
+  { id: 20, name: "Akkuschrauber", file: "raw_20.jpg" }
 ];
 
 function extractHighPrecisionContour(data, W, H) {

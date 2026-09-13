@@ -8,7 +8,7 @@
   },
   {
     "id": 2,
-    "name": "Schraubenschlüssel",
+    "name": "Werkzeug-Set",
     "vertices": 48,
     "rawUrl": "./test-data/raw_02.jpg",
     "contouredUrl": "./test-data/contoured_02.jpg"
@@ -71,14 +71,14 @@
   },
   {
     "id": 11,
-    "name": "Heftgerät",
-    "vertices": 38,
+    "name": "Justitia-Statue",
+    "vertices": 48,
     "rawUrl": "./test-data/raw_11.jpg",
     "contouredUrl": "./test-data/contoured_11.jpg"
   },
   {
     "id": 12,
-    "name": "Vase",
+    "name": "Keramik-Teller",
     "vertices": 48,
     "rawUrl": "./test-data/raw_12.jpg",
     "contouredUrl": "./test-data/contoured_12.jpg"
@@ -92,7 +92,7 @@
   },
   {
     "id": 14,
-    "name": "Schlüssel",
+    "name": "Autoschlüssel",
     "vertices": 48,
     "rawUrl": "./test-data/raw_14.jpg",
     "contouredUrl": "./test-data/contoured_14.jpg"
@@ -120,7 +120,7 @@
   },
   {
     "id": 18,
-    "name": "Glühbirne",
+    "name": "Glühbirne (Hand)",
     "vertices": 48,
     "rawUrl": "./test-data/raw_18.jpg",
     "contouredUrl": "./test-data/contoured_18.jpg"
@@ -134,8 +134,8 @@
   },
   {
     "id": 20,
-    "name": "Schraubendreher",
-    "vertices": 42,
+    "name": "Akkuschrauber",
+    "vertices": 38,
     "rawUrl": "./test-data/raw_20.jpg",
     "contouredUrl": "./test-data/contoured_20.jpg"
   }

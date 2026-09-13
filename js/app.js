@@ -257,6 +257,8 @@ class VisionIDApp {
     }
 
     this.overlayCtx.closePath();
+    this.overlayCtx.fillStyle = color.includes('#') ? `${color}38` : 'rgba(16, 185, 129, 0.22)';
+    this.overlayCtx.fill();
     this.overlayCtx.stroke();
     this.overlayCtx.restore();
   }

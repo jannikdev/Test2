@@ -26,38 +26,76 @@ async function run() {
     const W = img.width;
     const H = img.height;
 
-    // Multi-point prompt support for complex multi-part objects (sunglasses, scissors, headphones, watch)
-    const customPoints = {
-      '02': [[0.5, 0.5]], // Werkzeug-Set
-      '03': [[0.35, 0.45], [0.65, 0.35]], // Schere: upper blade + lower handle
-      '05': [[0.4, 0.5], [0.65, 0.65]], // Armbanduhr: dial + strap
-      '07': [[0.38, 0.63], [0.63, 0.63]], // Sonnenbrille: left lens + right lens
-      '08': [[0.43, 0.58], [0.55, 0.28], [0.75, 0.65]] // Kopfhörer: left earcup + headband + right earcup
+    // Per-object optimized prompts with positive & negative guidance for 100% clean masks
+    const promptDefs = {
+      // 01 Kaffeebecher: Full mug including white rim and handle
+      '01': { pts: [[0.45, 0.45], [0.22, 0.35], [0.88, 0.32], [0.08, 0.08]], labels: [1, 1, 1, 0], maskIdx: 0 },
+      // 02 Werkzeug-Set: Entire leather tool pouch with screwdriver bits and bottom flap
+      '02': { pts: [[0.50, 0.45], [0.35, 0.45], [0.60, 0.50], [0.45, 0.65], [0.50, 0.10]], labels: [1, 1, 1, 1, 0], maskIdx: 0 },
+      // 03 Schere: Both blades, both handles, negative point on crook shadow
+      '03': { pts: [[0.65, 0.35], [0.70, 0.48], [0.15, 0.72], [0.15, 0.33], [0.28, 0.48]], labels: [1, 1, 1, 1, 0], maskIdx: 1 },
+      // 04 Smartphone: Perfect full phone body, laptop keyboard and trackpad suppressed
+      '04': { pts: [[0.45, 0.45], [0.35, 0.65], [0.55, 0.25], [0.85, 0.50], [0.90, 0.80]], labels: [1, 1, 1, 0, 0], maskIdx: 1 },
+      // 05 Armbanduhr: Dial + leather strap top and bottom
+      '05': { pts: [[0.42, 0.62], [0.72, 0.68], [0.26, 0.50], [0.20, 0.20]], labels: [1, 1, 1, 0], maskIdx: 0 },
+      // 06 Apfel: Crisp apple in fruit pile
+      '06': { pts: [[0.55, 0.45]], labels: [1], maskIdx: 1 },
+      // 07 Sonnenbrille: Both lenses + frame, negative prompt on marble table reflection
+      '07': { pts: [[0.28, 0.52], [0.54, 0.52], [0.40, 0.72]], labels: [1, 1, 0], maskIdx: 1 },
+      // 08 Kopfhörer: Both earcups + headband, negative prompt in arch to carve out yellow space
+      '08': { pts: [[0.50, 0.58], [0.62, 0.22], [0.82, 0.68], [0.65, 0.45]], labels: [1, 1, 1, 0], maskIdx: 1 },
+      // 09 Sneaker: Upper fabric + white rubber sole
+      '09': { pts: [[0.50, 0.45], [0.60, 0.70], [0.20, 0.20]], labels: [1, 1, 0], maskIdx: 0 },
+      // 10 Buch: Open book pages
+      '10': { pts: [[0.42, 0.55], [0.65, 0.50]], labels: [1, 1], maskIdx: 1 },
+      // 11 Justitia-Statue: Bronze statue + scales and pans, negative wood
+      '11': { pts: [[0.68, 0.65], [0.48, 0.35], [0.68, 0.58], [0.37, 0.79], [0.54, 0.85], [0.15, 0.15]], labels: [1, 1, 1, 1, 1, 0], maskIdx: 1 },
+      // 12 Keramik-Teller: Stack of turquoise plates
+      '12': { pts: [[0.48, 0.48]], labels: [1], maskIdx: 1 },
+      // 13 Hammer: Metal head + rubber grip, negative on wood table
+      '13': { pts: [[0.68, 0.32], [0.25, 0.68], [0.40, 0.35]], labels: [1, 1, 0], maskIdx: 1 },
+      // 14 Autoschlüssel: Car key ONLY, hands and fingers suppressed via negative prompts
+      '14': { pts: [[0.40, 0.33], [0.48, 0.20], [0.35, 0.65]], labels: [1, 0, 0], maskIdx: 1 },
+      // 15 Trinkflasche: Perfect bottle cylinder
+      '15': { pts: [[0.50, 0.50]], labels: [1], maskIdx: 1 },
+      // 16 Computermaus: Clean full mouse body with maskIdx 0
+      '16': { pts: [[0.50, 0.50]], labels: [1], maskIdx: 0 },
+      // 17 Banane: Front bananas + rear yellow banana, negative yellow background
+      '17': { pts: [[0.45, 0.60], [0.65, 0.55], [0.72, 0.55], [0.15, 0.20]], labels: [1, 1, 1, 0], maskIdx: 1 },
+      // 18 Glühbirne: Glowing bulb glass sphere, fingers and palm suppressed via negative prompts
+      '18': { pts: [[0.51, 0.50], [0.60, 0.50], [0.34, 0.40], [0.32, 0.50], [0.66, 0.48], [0.50, 0.65], [0.18, 0.48]], labels: [1, 1, 0, 0, 0, 0, 0], maskIdx: 0 },
+      // 19 Parfümflasche: Crystal cap + glass bottle body with rose reflections enclosed
+      '19': { pts: [[0.58, 0.32], [0.45, 0.55], [0.70, 0.55], [0.58, 0.65]], labels: [1, 1, 1, 1], maskIdx: 0 },
+      // 20 Akkuschrauber: Power drill head + grip + battery base, negative white background
+      '20': { pts: [[0.35, 0.22], [0.55, 0.22], [0.52, 0.82], [0.15, 0.15]], labels: [1, 1, 1, 0], maskIdx: 1 }
     };
 
-    const pts = customPoints[id] || [[0.5, 0.5]];
+    const def = promptDefs[id] || { pts: [[0.5, 0.5]], labels: [1], maskIdx: 1 };
+    const pts = def.pts;
+    const labels = def.labels;
+
     const input_points = [[pts.map(p => [p[0] * W, p[1] * H])]];
-    const input_labels = [[pts.map(() => 1)]];
+    const input_labels = [[[...labels]]];
 
     const inputs = await processor(img, input_points, input_labels);
     const outputs = await model(inputs);
     const masks = await processor.post_process_masks(outputs.pred_masks, inputs.original_sizes, inputs.reshaped_input_sizes);
 
-    // Pick mask: SAM outputs [0: whole scene, 1: object body, 2: subpart]
-    // Mask 1 represents the focused object without surrounding context/background noise
     const scores = outputs.iou_scores.data;
-    let chosenIdx = 1;
-    if (scores[1] < 0.65) {
+    let chosenIdx = def.maskIdx !== undefined ? def.maskIdx : 1;
+    if (def.maskIdx === undefined && scores[1] < 0.65) {
       chosenIdx = scores[0] > scores[2] ? 0 : 2;
     }
 
     const rawMask = masks[0].data.subarray(chosenIdx * W * H, (chosenIdx + 1) * W * H);
 
-    // Connected component flood-fill seeded from all prompt points
+    // Connected component flood-fill seeded from positive prompt points
     const cleanMask = new Uint8Array(W * H);
     const queue = [];
 
-    for (const p of pts) {
+    for (let i = 0; i < pts.length; i++) {
+      if (labels[i] !== 1) continue; // Only positive seed points
+      const p = pts[i];
       const px = Math.floor(p[0] * W);
       const py = Math.floor(p[1] * H);
       let seedX = px, seedY = py;
@@ -97,43 +135,49 @@ async function run() {
       }
     }
 
-    // Extract exact perimeter pixels of the connected object
-    const rgba = new Uint8Array(W * H * 4);
-    for (let y = 1; y < H - 1; y++) {
-      for (let x = 1; x < W - 1; x++) {
+    // Render Semi-Transparent AR Overlay with Glowing Perimeter Stroke
+    const overlayRgba = new Uint8Array(W * H * 4);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
         const idx = y * W + x;
         if (cleanMask[idx] === 1) {
-          if (
+          const p = idx * 4;
+          const isBorder = (
+            x === 0 || x === W - 1 || y === 0 || y === H - 1 ||
             cleanMask[idx - 1] === 0 || cleanMask[idx + 1] === 0 ||
-            cleanMask[idx - W] === 0 || cleanMask[idx + W] === 0 ||
-            cleanMask[idx - W - 1] === 0 || cleanMask[idx - W + 1] === 0 ||
-            cleanMask[idx + W - 1] === 0 || cleanMask[idx + W + 1] === 0
-          ) {
-            const p = idx * 4;
-            rgba[p] = 52;     // Emerald #34d399 R
-            rgba[p + 1] = 211; // G
-            rgba[p + 2] = 153; // B
-            rgba[p + 3] = 255; // A
+            cleanMask[idx - W] === 0 || cleanMask[idx + W] === 0
+          );
+          if (isBorder) {
+            overlayRgba[p] = 52;     // Emerald #34d399 R
+            overlayRgba[p + 1] = 211; // G
+            overlayRgba[p + 2] = 153; // B
+            overlayRgba[p + 3] = 255; // 100% border alpha
+          } else {
+            // Semi-transparent AR fill
+            overlayRgba[p] = 16;     // Emerald #10b981 R
+            overlayRgba[p + 1] = 185; // G
+            overlayRgba[p + 2] = 129; // B
+            overlayRgba[p + 3] = 75;  // ~29% opacity AR highlight
           }
         }
       }
     }
 
-    // Dilate by 1px for clean crisp 2px stroke
-    const dilated = new Uint8Array(rgba);
+    // Dilate the border by 1px for a clean, bold 2px glowing outline
+    const finalOverlay = new Uint8Array(overlayRgba);
     for (let y = 1; y < H - 1; y++) {
       for (let x = 1; x < W - 1; x++) {
         const idx = y * W + x;
-        if (rgba[idx * 4 + 3] === 255) {
+        if (overlayRgba[idx * 4 + 3] === 255) {
           for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
               const n = (y + dy) * W + (x + dx);
               const p = n * 4;
-              if (dilated[p + 3] === 0) {
-                dilated[p] = 52;
-                dilated[p + 1] = 211;
-                dilated[p + 2] = 153;
-                dilated[p + 3] = 200;
+              if (finalOverlay[p + 3] < 180) {
+                finalOverlay[p] = 52;
+                finalOverlay[p + 1] = 211;
+                finalOverlay[p + 2] = 153;
+                finalOverlay[p + 3] = 210;
               }
             }
           }
@@ -148,7 +192,7 @@ async function run() {
         <g transform="translate(24, 28)">
           <rect x="0" y="0" width="190" height="30" rx="6" fill="rgba(10, 14, 20, 0.88)" stroke="rgba(52, 211, 153, 0.6)" stroke-width="1"/>
           <circle cx="14" cy="15" r="4" fill="#34d399"/>
-          <text x="26" y="19" fill="#ffffff" font-family="-apple-system, sans-serif" font-size="11" font-weight="600">SlimSAM Neural Mask</text>
+          <text x="26" y="19" fill="#ffffff" font-family="-apple-system, sans-serif" font-size="11" font-weight="600">SlimSAM AR-Maske</text>
           <text x="150" y="19" fill="#34d399" font-family="monospace" font-size="11" font-weight="bold">${(scores[chosenIdx] * 100).toFixed(0)}%</text>
         </g>
       </svg>
@@ -157,7 +201,7 @@ async function run() {
     const rawBuf = fs.readFileSync(rawPath);
     const result = await sharp(rawBuf)
       .composite([
-        { input: Buffer.from(dilated), raw: { width: W, height: H, channels: 4 }, blend: 'over' },
+        { input: Buffer.from(finalOverlay), raw: { width: W, height: H, channels: 4 }, blend: 'over' },
         { input: Buffer.from(badgeSvg), blend: 'over' }
       ])
       .jpeg({ quality: 92 })
