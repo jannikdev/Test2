@@ -1,0 +1,7 @@
+{
+  "name": "visionid",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Instant Visual Object Recognition Engine",
+  "private": true
+}

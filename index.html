@@ -3,822 +3,219 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <!-- ANTI CACHE HEADERS (wichtig für lokales Testen) -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-  <title>Keramik Kasse Pro (Live Detection)</title>
+  <title>VisionID — Schnelle Objekterkennung</title>
 
-  <!-- Tailwind CSS v4 -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- PWA Manifest & Meta -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#0a0e14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-  <style>
-    :root { color-scheme: dark; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-      overscroll-behavior-y: none;
-      -webkit-user-select: none;
-      user-select: none;
-    }
-    .hide-scrollbar::-webkit-scrollbar { display: none; }
-    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    
-    .fade-enter { opacity: 0; transform: translateY(10px); }
-    .fade-enter-active { opacity: 1; transform: translateY(0); transition: opacity 300ms, transform 300ms; }
-    
-    .glass {
-      background: rgba(15, 23, 42, 0.7);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-    }
-  </style>
+  <!-- Minimalist Styling -->
+  <link rel="stylesheet" href="./css/app.css">
 </head>
-<body class="bg-slate-950 text-slate-100 h-[100dvh] flex flex-col overflow-hidden">
+<body>
 
-  <!-- FULLSCREEN LOADING OVERLAY -->
-  <div id="loading-overlay" class="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-6 transition-opacity duration-700">
-    <!-- Background blurred effect -->
-    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-slate-950 to-slate-950 pointer-events-none"></div>
-    
-    <div class="glass p-8 rounded-[2.5rem] border border-slate-800/80 shadow-2xl flex flex-col items-center w-full max-w-sm text-center space-y-7 relative overflow-hidden">
-      <!-- Shimmer effect -->
-      <div class="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent pointer-events-none"></div>
-      
-      <div class="relative w-20 h-20">
-        <div class="absolute inset-0 rounded-full border-4 border-slate-800"></div>
-        <div id="loading-spinner" class="absolute inset-0 rounded-full border-4 border-cyan-500 border-t-transparent animate-spin shadow-[0_0_15px_rgba(34,211,238,0.5)]"></div>
-        <i data-lucide="brain-circuit" class="absolute inset-0 m-auto w-8 h-8 text-cyan-400"></i>
-      </div>
-      
-      <div class="space-y-3 w-full">
-        <h2 class="text-xl font-bold text-white tracking-wide">Neural Engine</h2>
-        <p id="loading-text" class="text-[13px] text-slate-400 leading-relaxed">
-          Lade KI-Modelle in den Browser...<br>
-          <span class="text-[11px] text-slate-500">(Dies kann beim ersten Mal dauern)</span>
-        </p>
-        
-        <!-- Progress Bar -->
-        <div class="w-full bg-slate-900/80 rounded-full h-2.5 mt-6 overflow-hidden border border-slate-800/50 shadow-inner">
-          <div id="loading-progress-bar" class="bg-gradient-to-r from-blue-500 to-cyan-400 h-full rounded-full transition-all duration-300 ease-out w-0 relative">
-            <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
-          </div>
-        </div>
-        
-        <div class="flex justify-between text-[10px] text-slate-500 font-semibold mt-2 uppercase tracking-widest">
-          <span id="loading-file" class="truncate max-w-[70%] text-left">Initialisiere...</span>
-          <span id="loading-percent" class="text-cyan-400">0%</span>
-        </div>
-      </div>
+  <!-- Minimalist Loading Banner -->
+  <div id="loading-banner" class="hidden">
+    <span id="loading-text">Vision-Modell wird vorbereitet...</span>
+    <div class="progress-track">
+      <div id="loading-progress" class="progress-fill"></div>
     </div>
   </div>
 
-  <style>
-    @keyframes shimmer {
-      100% { transform: translateX(100%); }
-    }
-  </style>
-
-  <!-- TOP HEADER -->
-  <header class="px-5 py-4 glass border-b border-slate-800/80 flex justify-between items-center z-50 relative shadow-2xl shadow-black/50">
-    <div class="flex items-center space-x-3">
-      <div id="status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500 transition-all duration-500 shadow-lg shadow-amber-500/50 animate-pulse"></div>
-      <div class="flex flex-col">
-        <h1 class="font-semibold text-xs tracking-wider uppercase text-slate-400">Keramik Engine <span class="text-blue-500 ml-1">Live</span></h1>
-        <span class="text-[11px] font-medium text-slate-300" id="app-status">Initialisiere YOLOv8 & CLIP...</span>
-      </div>
-    </div>
-    <div class="px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/50 text-xs font-medium text-slate-300 flex items-center space-x-1.5 shadow-inner">
-      <i data-lucide="database" class="w-3.5 h-3.5 text-blue-400"></i>
-      <span id="db-badge">0 Artikel</span>
-    </div>
-  </header>
-
-  <!-- MAIN VIEWPORT -->
-  <main class="flex-1 relative overflow-y-auto hide-scrollbar pb-28">
-
-    <!-- UNIVERSAL CAMERA & FOCUS VIEW -->
-    <section id="view-camera" class="p-4 space-y-4 max-w-md mx-auto">
-      
-      <div class="relative w-full aspect-square rounded-[2rem] overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl shadow-black/40 ring-1 ring-white/5">
-        <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover transition-opacity duration-500 opacity-0"></video>
-        
-        <!-- LIVE DETECTION CANVAS OVERLAY -->
-        <canvas id="detection-canvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
-        
-        <div class="absolute bottom-5 left-0 right-0 text-center pointer-events-none">
-          <span class="inline-flex items-center space-x-1.5 px-4 py-2 rounded-full glass border border-white/10 text-xs font-medium text-white shadow-xl">
-            <i data-lucide="focus" class="w-3.5 h-3.5 text-cyan-400"></i>
-            <span id="camera-hint">Live Objekterkennung aktiv</span>
-          </span>
+  <div id="app">
+    <!-- Top Status Bar -->
+    <header class="top-bar">
+      <div class="brand-section">
+        <div id="status-dot" class="status-indicator"></div>
+        <div>
+          <div class="brand-title">VisionID</div>
+          <div id="brand-status" class="brand-status">Initialisiere...</div>
         </div>
       </div>
 
-      <!-- DYNAMISCHER AKTION-BUTTON -->
-      <div id="action-container" class="space-y-3">
-        <!-- JS injiziert hier den Button -->
+      <!-- Umriss-Toggle: Schnell vs KI -->
+      <div class="contour-switch" title="Umriss-Berechnungsmethode">
+        <button id="btn-contour-fast" class="active">Schnell (60fps)</button>
+        <button id="btn-contour-neural">KI-Maske</button>
       </div>
-      
-      <!-- Ergebnisse -->
-      <div id="results-container" class="space-y-2 mt-4 pb-10"></div>
-    </section>
+    </header>
 
-    <!-- VIEW 2: ARTIKEL ANLERNEN (Daten Eingabe) -->
-    <section id="view-add" class="p-4 space-y-4 max-w-md mx-auto hidden">
-      <div class="glass border border-slate-800/80 p-5 rounded-[2rem] space-y-5 shadow-2xl">
-        <div class="flex items-center space-x-3 pb-3 border-b border-slate-800">
-          <div class="p-2.5 rounded-xl bg-blue-500/10 text-blue-400 shadow-inner">
-            <i data-lucide="plus-circle" class="w-5 h-5"></i>
+    <!-- Main Viewport Container -->
+    <main class="viewport-container">
+
+      <!-- VIEW 1: LIVE SCANNER -->
+      <section id="view-scan" class="view-section active">
+        <div class="camera-wrapper">
+          <video id="camera-video" autoplay playsinline muted></video>
+          <canvas id="overlay-canvas"></canvas>
+
+          <!-- Reticle Viewfinder -->
+          <div id="reticle" class="reticle-container">
+            <div class="reticle-corners"></div>
+            <div class="reticle-crosshair"></div>
           </div>
-          <div>
-            <h2 class="font-semibold text-sm text-white">Neuen Artikel anlegen</h2>
-            <p class="text-[11px] text-slate-400">Name, Preis & Vektor-Aufnahmen verwalten</p>
+
+          <!-- HUD Status Pill -->
+          <div class="hud-status-pill active">
+            <div class="dot"></div>
+            <span id="hud-status-text">Kamera wird gestartet...</span>
           </div>
-        </div>
-        
-        <div class="space-y-4">
-          <div>
-            <label class="text-xs font-medium text-slate-400 mb-1.5 block ml-1">Artikelbezeichnung</label>
-            <div class="relative">
-              <i data-lucide="tag" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
-              <input type="text" id="input-name" placeholder="z.B. Tasse Henkel blau" 
-                class="w-full pl-10 pr-4 py-3.5 rounded-2xl bg-slate-900/50 border border-slate-700/50 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-sm shadow-inner">
-            </div>
-          </div>
-          <div>
-            <label class="text-xs font-medium text-slate-400 mb-1.5 block ml-1">Preis in €</label>
-            <div class="relative">
-               <i data-lucide="coins" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
-               <input type="number" id="input-price" step="0.50" placeholder="19.00" 
-                class="w-full pl-10 pr-4 py-3.5 rounded-2xl bg-slate-900/50 border border-slate-700/50 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-sm shadow-inner">
-            </div>
-          </div>
-        </div>
 
-        <div class="p-4 rounded-2xl bg-slate-900/80 border border-slate-800/80 space-y-3 shadow-inner">
-          <div class="flex justify-between items-center text-sm">
-            <span class="text-slate-400 text-xs font-medium flex items-center space-x-1.5">
-              <i data-lucide="aperture" class="w-3.5 h-3.5 text-slate-500"></i>
-              <span>Erfasste Winkel-Vektoren:</span>
-            </span>
-            <span id="shot-counter" class="font-bold text-blue-400 text-xs bg-blue-950/80 border border-blue-900/50 px-2.5 py-1 rounded-lg">0</span>
-          </div>
-          <p class="text-[11px] text-slate-500 leading-relaxed">
-            Wechsle in den <strong class="text-slate-300">Kamera-Tab</strong>, warte bis die Live-Erkennung das Objekt einrahmt, und mache <strong class="text-slate-300">3-5 Fotos</strong> für maximale Robustheit.
-          </p>
-        </div>
-
-        <button onclick="saveNewItem()" id="btn-save-item" disabled
-          class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] transition-all flex justify-center items-center space-x-2 disabled:opacity-50 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed shadow-lg font-medium text-sm text-white">
-          <i data-lucide="check" class="w-4 h-4"></i>
-          <span>Artikel in Datenbank speichern</span>
-        </button>
-      </div>
-    </section>
-
-    <!-- VIEW 3: INVENTAR -->
-    <section id="view-inventory" class="p-4 space-y-4 max-w-md mx-auto hidden pb-24">
-      <div class="flex justify-between items-center px-2 mb-2">
-        <h2 class="font-semibold text-xs uppercase tracking-widest text-slate-400 flex items-center space-x-2">
-          <i data-lucide="layers" class="w-4 h-4 text-blue-400"></i>
-          <span>Sortiment & Datenbank</span>
-        </h2>
-        <button onclick="clearDatabase()" class="text-xs text-rose-400 hover:text-rose-300 transition-colors font-medium flex items-center space-x-1 px-2 py-1 rounded-lg hover:bg-rose-500/10">
-          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-          <span>Alle löschen</span>
-        </button>
-      </div>
-      <div id="inventory-list" class="space-y-3"></div>
-    </section>
-  </main>
-
-  <!-- FIXED BOTTOM NAVIGATION (iOS Style Tabbar) -->
-  <nav class="fixed bottom-0 left-0 right-0 glass border-t border-slate-800/80 pb-safe pt-2 px-6 flex justify-between items-center z-50">
-    <button onclick="switchTab('scanner')" id="nav-scanner" class="flex-1 flex flex-col items-center space-y-1.5 py-2 text-cyan-500 transition-colors relative">
-      <i data-lucide="scan" class="w-6 h-6"></i>
-      <span class="text-[10px] font-semibold tracking-wide">Kasse</span>
-      <div class="absolute -top-2 w-8 h-1 bg-cyan-500 rounded-b-full shadow-[0_0_10px_rgba(34,211,238,0.8)]"></div>
-    </button>
-    <button onclick="switchTab('add')" id="nav-add" class="flex-1 flex flex-col items-center space-y-1.5 py-2 text-slate-500 hover:text-slate-300 transition-colors relative">
-      <i data-lucide="plus-square" class="w-6 h-6"></i>
-      <span class="text-[10px] font-medium tracking-wide">Anlernen</span>
-      <div class="absolute -top-2 w-8 h-1 bg-transparent rounded-b-full transition-all"></div>
-    </button>
-    <button onclick="switchTab('inventory')" id="nav-inventory" class="flex-1 flex flex-col items-center space-y-1.5 py-2 text-slate-500 hover:text-slate-300 transition-colors relative">
-      <i data-lucide="library" class="w-6 h-6"></i>
-      <span class="text-[10px] font-medium tracking-wide">Inventar</span>
-      <div class="absolute -top-2 w-8 h-1 bg-transparent rounded-b-full transition-all"></div>
-    </button>
-  </nav>
-
-  <!-- APP LOGIC (IndexedDB, WebWorker, Transformers.js) -->
-  <script type="module">
-    import { animate } from "https://cdn.jsdelivr.net/npm/motion@latest/+esm";
-    
-    // --- IndexedDB Wrapper ---
-    const DB_NAME = 'KeramikLiveDB';
-    const STORE_NAME = 'items';
-    let db;
-
-    async function initDB() {
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 1);
-        request.onerror = (e) => reject(e);
-        request.onsuccess = (e) => { db = e.target.result; resolve(db); };
-        request.onupgradeneeded = (e) => {
-          db = e.target.result;
-          if (!db.objectStoreNames.contains(STORE_NAME)) {
-            db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-          }
-        };
-      });
-    }
-
-    async function getItems() {
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const req = tx.objectStore(STORE_NAME).getAll();
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    async function addItem(item) {
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const req = tx.objectStore(STORE_NAME).add(item);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    async function deleteItemFromDB(id) {
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const req = tx.objectStore(STORE_NAME).delete(id);
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    async function clearDB() {
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const req = tx.objectStore(STORE_NAME).clear();
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    // --- State ---
-    let database = [];
-    let currentShots = [];
-    let currentMode = 'scanner'; 
-    let isWorkerReady = false;
-    let latestBoxes = [];
-    const video = document.getElementById('webcam');
-    const detectionCanvas = document.getElementById('detection-canvas');
-    const ctxDetection = detectionCanvas.getContext('2d');
-
-    let worker = null;
-    let reqCounter = 0;
-    const pendingRequests = new Map();
-
-    // --- Live Object Detection Loop ---
-    let isDetecting = false;
-    
-    function startDetectionLoop() {
-      if (!isWorkerReady || currentMode !== 'scanner') {
-        ctxDetection.clearRect(0, 0, detectionCanvas.width, detectionCanvas.height);
-        requestAnimationFrame(startDetectionLoop);
-        return;
-      }
-      
-      if (!isDetecting && video.readyState === 4) {
-        isDetecting = true;
-        
-        detectionCanvas.width = video.videoWidth;
-        detectionCanvas.height = video.videoHeight;
-        
-        // Render Video zu Canvas für den Worker
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = video.videoWidth;
-        tempCanvas.height = video.videoHeight;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.drawImage(video, 0, 0);
-        
-        const reqId = ++reqCounter;
-        pendingRequests.set(reqId, (boxes) => {
-          latestBoxes = boxes;
-          drawBoundingBoxes(boxes);
-          isDetecting = false;
-        });
-        
-        worker.postMessage({ type: 'detect', imageData: tempCanvas.toDataURL('image/jpeg', 0.7), reqId });
-      }
-      requestAnimationFrame(startDetectionLoop);
-    }
-
-    function drawBoundingBoxes(boxes) {
-      ctxDetection.clearRect(0, 0, detectionCanvas.width, detectionCanvas.height);
-      
-      // Nur relevante Objekte filtern (YOLO COCO Klassen)
-      const allowedClasses = ['cup', 'bowl', 'bottle', 'vase', 'spoon', 'fork', 'knife', 'potted plant', 'cell phone'];
-      const validBoxes = boxes.filter(b => allowedClasses.includes(b.label));
-      
-      validBoxes.forEach((b, index) => {
-        const { xmin, ymin, xmax, ymax } = b.box;
-        const width = xmax - xmin;
-        const height = ymax - ymin;
-        
-        // Highlight best box (largest/most confident)
-        const isBest = index === 0;
-        const color = isBest ? '#22D3EE' : '#64748b'; // Cyan für das Hauptziel, Grau für andere
-        
-        ctxDetection.strokeStyle = color;
-        ctxDetection.lineWidth = isBest ? 5 : 2;
-        ctxDetection.lineJoin = "round";
-        ctxDetection.strokeRect(xmin, ymin, width, height);
-        
-        if (isBest) {
-           ctxDetection.fillStyle = 'rgba(34, 211, 238, 0.15)';
-           ctxDetection.fillRect(xmin, ymin, width, height);
-        }
-
-        ctxDetection.fillStyle = color;
-        ctxDetection.font = 'bold 36px "SF Pro Text", sans-serif';
-        const text = `${b.label} (${Math.round(b.score * 100)}%)`;
-        ctxDetection.fillText(text, xmin, ymin > 40 ? ymin - 15 : ymin + 40);
-      });
-    }
-
-    async function extractFeaturesAsync(canvas) {
-       return new Promise((resolve) => {
-          const reqId = ++reqCounter;
-          pendingRequests.set(reqId, resolve);
-          const dataURL = canvas.toDataURL('image/jpeg', 0.9);
-          worker.postMessage({ type: 'extract', imageData: dataURL, reqId });
-       });
-    }
-
-    // --- Dynamic Crop (YOLO -> CLIP) ---
-    async function getClipEmbedding() {
-      const canvas = document.createElement('canvas');
-      canvas.width = 224;
-      canvas.height = 224;
-      const ctx = canvas.getContext('2d');
-      
-      const vWidth = video.videoWidth || 640;
-      const vHeight = video.videoHeight || 640;
-      
-      let cropX, cropY, cropW, cropH;
-      
-      const allowed = ['cup', 'bowl', 'bottle', 'vase', 'spoon', 'fork', 'knife', 'potted plant'];
-      const validBoxes = latestBoxes.filter(b => allowed.includes(b.label));
-      
-      if (validBoxes.length > 0) {
-        // Größtes Objekt im Fokus nehmen
-        const best = validBoxes.sort((a,b) => b.score - a.score)[0].box;
-        cropX = best.xmin;
-        cropY = best.ymin;
-        cropW = best.xmax - best.xmin;
-        cropH = best.ymax - best.ymin;
-        
-        // Ein bisschen Padding (Rand) hinzufügen für den CLIP-Kontext
-        const padding = cropW * 0.1;
-        cropX = Math.max(0, cropX - padding);
-        cropY = Math.max(0, cropY - padding);
-        cropW = Math.min(vWidth - cropX, cropW + padding * 2);
-        cropH = Math.min(vHeight - cropY, cropH + padding * 2);
-      } else {
-        // Fallback: Center Crop
-        const cropSize = Math.floor(Math.min(vWidth, vHeight) * 0.6);
-        cropX = Math.floor((vWidth - cropSize) / 2);
-        cropY = Math.floor((vHeight - cropSize) / 2);
-        cropW = cropSize;
-        cropH = cropSize;
-      }
-      
-      // Zeichne den ausgeschnittenen Bounding-Box Bereich auf das CLIP-Format
-      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 224, 224);
-      return await extractFeaturesAsync(canvas);
-    }
-
-    // --- Init ---
-    async function init() {
-      try {
-        await initDB();
-        database = await getItems();
-        updateUIState();
-        
-        const errText = document.getElementById('loading-text');
-        
-        // Hole die Kamera zuerst, damit der User nicht warten muss
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 720 }, height: { ideal: 720 } }
-        });
-        video.srcObject = stream;
-        video.onloadedmetadata = () => {
-          video.style.opacity = '1';
-        };
-
-        // --- Fetch & Inject WebWorker ---
-        errText.innerHTML = `Lade KI-Engine (CDN)...`;
-        const cdnResponse = await fetch('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js');
-        if (!cdnResponse.ok) throw new Error('CDN konnte nicht geladen werden.');
-        const libCode = await cdnResponse.text();
-        
-        const workerCode = libCode + `
-          self.postMessage({ type: 'debug', msg: 'Worker Engine gestartet...' });
-          
-          const { pipeline, env } = self.transformers;
-          env.allowLocalModels = false;
-          env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/';
-          env.backends.onnx.wasm.numThreads = 1;
-          
-          let yoloDetector = null;
-          let clipExtractor = null;
-
-          self.onmessage = async (e) => {
-            if (e.data.type === 'init') {
-              try {
-                self.postMessage({ type: 'debug', msg: 'Lade YOLO (Objekterkennung)...' });
-                yoloDetector = await pipeline('object-detection', 'Xenova/yolov8n', {
-                    progress_callback: (p) => self.postMessage({ type: 'progress', data: { model: 'YOLO', ...p } })
-                });
-                
-                self.postMessage({ type: 'debug', msg: 'Lade CLIP (Vektorsuche)...' });
-                clipExtractor = await pipeline('feature-extraction', 'Xenova/clip-vit-base-patch32', {
-                    progress_callback: (p) => self.postMessage({ type: 'progress', data: { model: 'CLIP', ...p } })
-                });
-                
-                self.postMessage({ type: 'ready' });
-              } catch (err) {
-                self.postMessage({ type: 'error', error: err.message });
-              }
-            } 
-            else if (e.data.type === 'detect') {
-              if (!yoloDetector) return;
-              try {
-                const { imageData, reqId } = e.data;
-                const output = await yoloDetector(imageData, { threshold: 0.25 });
-                self.postMessage({ type: 'detect_result', boxes: output, reqId });
-              } catch(err) {
-                 self.postMessage({ type: 'detect_result', boxes: [], reqId });
-              }
-            }
-            else if (e.data.type === 'extract') {
-              if (!clipExtractor) return;
-              try {
-                const { imageData, reqId } = e.data;
-                const output = await clipExtractor(imageData, { pooling: 'mean', normalize: true });
-                self.postMessage({ type: 'extract_result', vec: Array.from(output.data), reqId });
-              } catch(err) {
-                 self.postMessage({ type: 'error', error: err.message });
-              }
-            }
-          };
-        `;
-        
-        const blob = new Blob([workerCode], { type: 'application/javascript' });
-        worker = new Worker(URL.createObjectURL(blob));
-
-        worker.onerror = (err) => {
-          console.error('Globale Worker Exception:', err);
-          let msg = err.message || "Unbekannter Absturz im Hintergrund";
-          if(errText) errText.innerHTML = `<span class="text-rose-400 font-bold">Kritischer Fehler:</span> ${msg}`;
-          document.getElementById('loading-spinner').className = 'absolute inset-0 rounded-full border-4 border-rose-500 border-t-rose-200';
-        };
-
-        worker.onmessage = (e) => {
-          const msg = e.data;
-          if (msg.type === 'progress') {
-             const data = msg.data;
-             if (data.status === 'progress' || data.status === 'downloading') {
-                 const percent = Math.round(data.progress || 0);
-                 document.getElementById('loading-text').innerHTML = `Lade <strong>${data.model}</strong>...`;
-                 document.getElementById('loading-file').innerText = data.file || 'weights';
-                 document.getElementById('loading-percent').innerText = `${percent}%`;
-                 document.getElementById('loading-progress-bar').style.width = `${percent}%`;
-             } else if (data.status === 'initiate') {
-                 document.getElementById('loading-text').innerHTML = `Starte Download: <strong>${data.model}</strong>`;
-                 document.getElementById('loading-file').innerText = data.file || '...';
-                 document.getElementById('loading-progress-bar').style.width = `0%`;
-                 document.getElementById('loading-percent').innerText = `0%`;
-             } else if (data.status === 'done') {
-                 document.getElementById('loading-progress-bar').style.width = `100%`;
-                 document.getElementById('loading-percent').innerText = `100%`;
-             }
-          } else if (msg.type === 'debug') {
-            document.getElementById('loading-file').innerText = msg.msg;
-          } else if (msg.type === 'ready') {
-            isWorkerReady = true;
-            
-            // Hide Loading Overlay
-            const overlay = document.getElementById('loading-overlay');
-            overlay.style.opacity = '0';
-            setTimeout(() => overlay.remove(), 700);
-
-            document.getElementById('app-status').innerText = 'Live Tracking Aktiv';
-            document.getElementById('app-status').className = 'text-[11px] font-medium text-cyan-400';
-            document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-cyan-500 shadow-[0_0_12px_rgba(34,211,238,0.8)]';
-            updateActionButtons();
-            
-            if (video.readyState >= 2) {
-               requestAnimationFrame(startDetectionLoop);
-            }
-          } else if (msg.type === 'error') {
-            console.error('Worker Error:', msg.error);
-            document.getElementById('loading-text').innerHTML = `<span class="text-rose-400 font-bold">Fehler:</span> ${msg.error}`;
-            document.getElementById('loading-spinner').className = 'absolute inset-0 rounded-full border-4 border-rose-500 border-t-rose-200';
-            
-            document.getElementById('app-status').innerText = 'Initialisierungs-Fehler';
-            document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-rose-500 shadow-lg shadow-rose-500/50';
-          } else if (msg.type === 'detect_result' || msg.type === 'extract_result') {
-            const resolve = pendingRequests.get(msg.reqId);
-            if (resolve) {
-              resolve(msg.boxes || msg.vec);
-              pendingRequests.delete(msg.reqId);
-            }
-          }
-        };
-        
-        worker.postMessage({ type: 'init' });
-        updateActionButtons();
-      } catch (err) {
-        console.error(err);
-        const errText = document.getElementById('loading-text');
-        let errMsg = err.message || "Unbekannter Fehler";
-        
-        if (err.name === 'NotAllowedError') {
-          errMsg = 'Bitte erlaube den Kamera-Zugriff in den Einstellungen.';
-        }
-        
-        if(errText) errText.innerHTML = `<span class="text-rose-400 font-bold">Fehler:</span> ${errMsg}`;
-        document.getElementById('app-status').innerText = 'Kamera / Init blockiert';
-        document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-rose-500 shadow-lg shadow-rose-500/50';
-      }
-    }
-
-    // --- Navigation ---
-    window.switchTab = function(tab) {
-      const isCameraTab = (tab === 'scanner' || tab === 'add');
-      
-      document.getElementById('view-camera').classList.toggle('hidden', !isCameraTab);
-      document.getElementById('view-add').classList.toggle('hidden', tab !== 'add');
-      document.getElementById('view-inventory').classList.toggle('hidden', tab !== 'inventory');
-      
-      currentMode = (tab === 'add') ? 'training' : 'scanner';
-      updateActionButtons();
-
-      ['scanner', 'add', 'inventory'].forEach(t => {
-        const btn = document.getElementById(`nav-${t}`);
-        const bar = btn.querySelector('div');
-        const text = btn.querySelector('span');
-
-        if (t === tab || (tab === 'add' && t === 'scanner')) {
-          btn.classList.add('text-cyan-500');
-          btn.classList.remove('text-slate-500');
-          text.classList.add('font-semibold');
-          text.classList.remove('font-medium');
-          if (t === tab) bar.className = 'absolute -top-2 w-8 h-1 bg-cyan-500 rounded-b-full shadow-[0_0_10px_rgba(34,211,238,0.8)]';
-        } else {
-          btn.classList.remove('text-cyan-500');
-          btn.classList.add('text-slate-500');
-          text.classList.remove('font-semibold');
-          text.classList.add('font-medium');
-          bar.className = 'absolute -top-2 w-8 h-1 bg-transparent rounded-b-full transition-all';
-        }
-      });
-
-      if(tab === 'inventory') renderInventory();
-      if(navigator.vibrate) navigator.vibrate(10);
-      lucide.createIcons();
-    };
-
-    window.updateActionButtons = function() {
-      const container = document.getElementById('action-container');
-      const disabledClass = !isWorkerReady ? 'opacity-50 cursor-not-allowed bg-slate-800' : 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_20px_rgba(34,211,238,0.4)]';
-      const disabledProp = !isWorkerReady ? 'disabled' : '';
-
-      if (currentMode === 'scanner') {
-        container.innerHTML = `
-          <button onclick="performScan()" id="btn-scan" ${disabledProp}
-            class="w-full py-4.5 rounded-2xl ${disabledClass} active:scale-[0.98] transition-all flex justify-center items-center space-x-2.5 font-semibold text-white shadow-lg">
-            <i data-lucide="search" class="w-5 h-5"></i>
-            <span>Scanner: Fokussiertes Objekt buchen</span>
-          </button>
-        `;
-      } else {
-        const emeraldClass = !isWorkerReady ? 'opacity-50 cursor-not-allowed bg-slate-800' : 'bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_20px_rgba(5,150,105,0.4)]';
-        container.innerHTML = `
-          <button onclick="captureTrainingShot()" id="btn-shoot" ${disabledProp}
-            class="w-full py-4 rounded-2xl ${emeraldClass} active:scale-[0.98] transition-all flex justify-center items-center space-x-2 font-medium text-white shadow-lg">
-            <i data-lucide="camera" class="w-5 h-5"></i>
-            <span>Winkel erfassen (${currentShots.length} gespeichert)</span>
-          </button>
-          <button onclick="switchTab('add')" class="w-full py-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 active:scale-[0.98] transition-all flex justify-center items-center space-x-2 font-medium text-slate-300 shadow-inner">
-            <i data-lucide="edit-3" class="w-4 h-4"></i>
-            <span>Namen & Preis festlegen</span>
-          </button>
-        `;
-      }
-      lucide.createIcons();
-    };
-
-    function cosineSimilarity(vecA, vecB) {
-      let dot = 0;
-      for (let i = 0; i < vecA.length; i++) dot += vecA[i] * vecB[i];
-      return dot;
-    }
-
-    // --- Actions ---
-    window.captureTrainingShot = async function() {
-      if (!isWorkerReady) return;
-      const btn = document.getElementById('btn-shoot');
-      btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i><span>Verarbeite Vektor...</span>';
-      lucide.createIcons();
-
-      try {
-        const vec = await getClipEmbedding();
-        currentShots.push(vec);
-        document.getElementById('shot-counter').innerText = currentShots.length;
-        document.getElementById('btn-save-item').disabled = currentShots.length === 0;
-        if(navigator.vibrate) navigator.vibrate([20, 50, 20]);
-      } catch(e) {
-        console.error(e);
-      } finally {
-        updateActionButtons();
-      }
-    };
-
-    window.saveNewItem = async function() {
-      const name = document.getElementById('input-name').value.trim();
-      const price = document.getElementById('input-price').value.trim();
-      
-      if (!name || !price) return alert('Bitte Name und Preis eingeben!');
-      if (currentShots.length === 0) return alert('Bitte zuerst im Kamera-Tab mindestens 1 Foto aufnehmen!');
-
-      await addItem({ name, price, embeddings: currentShots });
-      database = await getItems();
-      
-      currentShots = [];
-      document.getElementById('input-name').value = '';
-      document.getElementById('input-price').value = '';
-      document.getElementById('shot-counter').innerText = '0';
-      document.getElementById('btn-save-item').disabled = true;
-      
-      updateUIState();
-      switchTab('scanner');
-      
-      const container = document.getElementById('results-container');
-      container.innerHTML = `<div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold text-center fade-enter fade-enter-active">${name} gespeichert!</div>`;
-      setTimeout(() => container.innerHTML='', 3000);
-    };
-
-    window.performScan = async function() {
-      if (database.length === 0) {
-        alert('Bitte zuerst Artikel anlernen!');
-        switchTab('add');
-        return;
-      }
-      
-      const container = document.getElementById('results-container');
-      container.innerHTML = `
-        <div class="p-6 rounded-[2rem] glass border border-slate-800 flex flex-col items-center justify-center space-y-3 shadow-2xl">
-          <div class="relative">
-            <div class="absolute inset-0 rounded-full bg-cyan-500 blur-md animate-pulse opacity-50"></div>
-            <i data-lucide="scan" class="w-8 h-8 text-cyan-400 animate-spin relative"></i>
-          </div>
-          <span class="text-sm font-medium text-slate-300">Vektoranalyse via CLIP...</span>
-        </div>
-      `;
-      lucide.createIcons();
-
-      try {
-        const currentVec = await getClipEmbedding();
-        let scores = [];
-        
-        for (const item of database) {
-          let maxSim = -1;
-          for (const vec of item.embeddings) {
-            const dot = cosineSimilarity(currentVec, vec);
-            if (dot > maxSim) maxSim = dot;
-          }
-          scores.push({ item, sim: maxSim });
-        }
-        
-        scores.sort((a, b) => b.sim - a.sim);
-        const top3 = scores.slice(0, 3);
-        
-        container.innerHTML = '';
-        top3.forEach((res, index) => {
-          let percent = Math.round(((res.sim - 0.55) / (0.85 - 0.55)) * 100);
-          percent = Math.max(0, Math.min(100, percent));
-          
-          const isBest = index === 0 && percent >= 65;
-
-          const card = document.createElement('div');
-          card.className = `p-4 rounded-2xl border transition-all duration-300 flex justify-between items-center shadow-lg fade-enter ${isBest ? 'bg-emerald-950/40 border-emerald-800/50 scale-[1.02]' : 'glass border-slate-800 opacity-70'}`;
-          
-          card.innerHTML = `
-            <div class="flex items-center space-x-3.5">
-              <div class="p-3 rounded-xl ${isBest ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}">
-                <i data-lucide="${isBest ? 'check-circle' : 'help-circle'}" class="w-6 h-6"></i>
-              </div>
-              <div>
-                <div class="font-bold text-white text-[15px] leading-tight">${res.item.name}</div>
-                <div class="text-[11px] mt-1 flex items-center space-x-1.5 ${isBest ? 'text-emerald-400' : 'text-slate-500'}">
-                  <span class="font-bold bg-slate-900/50 px-1.5 py-0.5 rounded">${percent}% Match</span>
-                  <span>&bull;</span>
-                  <span>${res.item.price} €</span>
+          <!-- Floating Result Card -->
+          <div id="result-card" class="result-card">
+            <div class="result-info">
+              <img id="result-thumb" class="result-thumb" src="" alt="Thumbnail">
+              <div class="result-texts">
+                <div id="result-name" class="result-name">Objektname</div>
+                <div class="result-meta">
+                  <span id="confidence-badge" class="confidence-badge confidence-high">94% Match</span>
                 </div>
               </div>
             </div>
-            <button onclick="bookItem('${res.item.name}', '${res.item.price}')" class="px-5 py-3 rounded-xl ${isBest ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'} active:scale-95 transition-all font-medium text-sm flex items-center space-x-2">
-              <i data-lucide="shopping-bag" class="w-4 h-4"></i>
-              <span>Buchen</span>
+          </div>
+
+          <!-- Bottom Camera HUD Controls -->
+          <div class="hud-actions">
+            <button id="btn-flip-camera" class="btn-icon-subtle" title="Kamera wechseln">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 10c0-4.418-3.582-8-8-8s-8 3.582-8 8c0 2.5 1.15 4.73 2.95 6.2"></path>
+                <path d="M4 14c0 4.418 3.582 8 8 8s8-3.582 8-8c0-2.5-1.15-4.73-2.95-6.2"></path>
+                <polyline points="20 4 20 10 14 10"></polyline>
+                <polyline points="4 20 4 14 10 14"></polyline>
+              </svg>
             </button>
-          `;
-          container.appendChild(card);
-          setTimeout(() => card.classList.add('fade-enter-active'), index * 100);
-        });
-        lucide.createIcons();
-      } catch (err) {
-        console.error(err);
-        container.innerHTML = `<div class="p-6 rounded-[2rem] bg-rose-950/40 text-rose-400 text-center shadow-lg">Scan fehlgeschlagen</div>`;
-      }
-    };
 
-    window.bookItem = function(name, price) {
-      if(navigator.vibrate) navigator.vibrate([15, 30, 15]);
-      const container = document.getElementById('results-container');
-      container.innerHTML = `
-        <div class="p-6 rounded-[2rem] bg-cyan-950/40 border border-cyan-900/50 text-center shadow-2xl fade-enter fade-enter-active">
-          <div class="w-16 h-16 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center mx-auto mb-3">
-            <i data-lucide="receipt" class="w-8 h-8"></i>
+            <!-- Manual Trigger Button -->
+            <button id="btn-trigger-scan" class="btn-trigger-scan" title="Objekt jetzt erfassen">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+
+            <div style="width: 44px;"></div> <!-- Spacer for symmetry -->
           </div>
-          <div class="text-white font-bold text-lg">${name}</div>
-          <div class="text-cyan-400 font-semibold">${price} € gebucht</div>
         </div>
-      `;
-      lucide.createIcons();
-      setTimeout(() => container.innerHTML = '', 3000);
-    };
+      </section>
 
-    window.renderInventory = function() {
-      const list = document.getElementById('inventory-list');
-      if (database.length === 0) {
-        list.innerHTML = `<div class="p-10 text-center text-slate-500">Inventar ist leer</div>`;
-        return;
-      }
-      list.innerHTML = database.map((item) => `
-        <div class="p-4 rounded-2xl glass border border-slate-800 flex justify-between items-center shadow-lg hover:border-slate-700 transition-colors">
-          <div class="flex items-center space-x-4">
-            <div class="p-2.5 rounded-xl bg-slate-800 text-cyan-400"><i data-lucide="box" class="w-5 h-5"></i></div>
-            <div>
-              <div class="font-semibold text-white text-sm">${item.name}</div>
-              <div class="text-xs text-slate-400 mt-1 flex items-center space-x-2">
-                <span class="text-slate-300 font-medium">${item.price} €</span>
-              </div>
-            </div>
+      <!-- VIEW 2: OBJEKT ANLERNEN (TRAIN) -->
+      <section id="view-train" class="view-section">
+        <div class="panel-card">
+          <h2 class="panel-title">Neues Objekt anlernen</h2>
+          <p class="panel-desc">Halte das Objekt mittig in die Kamera und nimm 3 bis 5 Blickwinkel auf.</p>
+
+          <div class="train-preview-box">
+            <canvas id="train-overlay-canvas"></canvas>
           </div>
-          <button onclick="deleteItem(${item.id})" class="p-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-colors">
-            <i data-lucide="trash-2" class="w-4 h-4"></i>
+
+          <!-- 5 Snapshot Slots -->
+          <div class="snapshots-grid">
+            <div id="slot-0" class="snapshot-slot"></div>
+            <div id="slot-1" class="snapshot-slot"></div>
+            <div id="slot-2" class="snapshot-slot"></div>
+            <div id="slot-3" class="snapshot-slot"></div>
+            <div id="slot-4" class="snapshot-slot"></div>
+          </div>
+
+          <button id="btn-capture-shot" class="btn-secondary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+            <span>Winkel aufnehmen (0/5)</span>
+          </button>
+
+          <div class="form-group" style="margin-top: 12px;">
+            <label class="form-label">Bezeichnung des Objekts</label>
+            <input type="text" id="input-obj-name" class="form-input" placeholder="z. B. Inbusschlüssel 6mm" autocomplete="off">
+          </div>
+
+          <button id="btn-save-object" class="btn-primary" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Objekt speichern</span>
           </button>
         </div>
-      `).join('');
-      lucide.createIcons();
-    };
+      </section>
 
-    window.deleteItem = async function(id) {
-      if(navigator.vibrate) navigator.vibrate(20);
-      await deleteItemFromDB(id);
-      database = await getItems();
-      renderInventory();
-      updateUIState();
-    };
+      <!-- VIEW 3: OBJEKT-BIBLIOTHEK -->
+      <section id="view-objects" class="view-section">
+        <div class="library-header">
+          <span class="library-title">Registrierte Objekte</span>
+          <span id="lib-count" class="library-count">0 Objekte</span>
+        </div>
 
-    window.clearDatabase = async function() {
-      if(confirm('Wirklich das gesamte Sortiment löschen?')) {
-        await clearDB();
-        database = await getItems();
-        renderInventory();
-        updateUIState();
-      }
-    };
+        <div id="objects-list"></div>
 
-    function updateUIState() {
-      document.getElementById('db-badge').innerText = `${database.length} Artikel`;
+        <div style="margin-top: 16px; display: flex; gap: 10px;">
+          <button id="btn-export-vault" class="btn-secondary" style="margin-bottom: 0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span>Backup Export</span>
+          </button>
+          <button id="btn-import-vault" class="btn-secondary" style="margin-bottom: 0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span>Import</span>
+          </button>
+          <input type="file" id="file-import" accept=".json" style="display: none;">
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation Tabs -->
+    <nav class="bottom-nav">
+      <button id="nav-scan" class="nav-tab-btn active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+          <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+          <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+          <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+          <line x1="7" y1="12" x2="17" y2="12"></line>
+        </svg>
+        <span>Scannen</span>
+      </button>
+
+      <button id="nav-train" class="nav-tab-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="16"></line>
+          <line x1="8" y1="12" x2="16" y2="12"></line>
+        </svg>
+        <span>Anlernen</span>
+      </button>
+
+      <button id="nav-objects" class="nav-tab-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"></rect>
+          <rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="14" y="14" width="7" height="7"></rect>
+          <rect x="3" y="14" width="7" height="7"></rect>
+        </svg>
+        <span>Objekte</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Service Worker Registration for PWA / GitHub Pages -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
     }
-
-    // --- Bootstrap ---
-    window.addEventListener('DOMContentLoaded', () => {
-      lucide.createIcons();
-      init();
-    });
   </script>
+
+  <!-- Main ES Module Bootstrap -->
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>
