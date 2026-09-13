@@ -7,11 +7,20 @@
 
 /* global importScripts */
 
-importScripts('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js');
+// Load transformers library: try local bundle first, with CDN fallbacks
+try {
+  importScripts('./transformers.min.js');
+} catch (errLocal) {
+  try {
+    importScripts('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js');
+  } catch (errCdn) {
+    importScripts('https://unpkg.com/@xenova/transformers@2.17.2/dist/transformers.min.js');
+  }
+}
 
 const { pipeline, env, RawImage, SamModel, AutoProcessor } = self.transformers;
 env.allowLocalModels = false;
-env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/';
+env.backends.onnx.wasm.wasmPaths = './';
 env.backends.onnx.wasm.numThreads = 1;
 
 let featureExtractor = null;
@@ -19,21 +28,64 @@ let samModel = null;
 let samProcessor = null;
 let isSamLoading = false;
 
-// Moore-Neighbor perimeter tracer on SAM binary mask
+// Flood-fill connected component and Moore-Neighbor perimeter tracer on SAM binary mask
 function extractSamPolygon(maskData, W, H) {
-  // Find first pixel of mask
-  let startX = -1, startY = -1;
-  for (let y = 4; y < H - 4 && startX === -1; y++) {
-    for (let x = 4; x < W - 4; x++) {
-      if (maskData[y * W + x] === 1) {
-        startX = x;
-        startY = y;
-        break;
+  const cx = Math.floor(W / 2);
+  const cy = Math.floor(H / 2);
+
+  // Find seed pixel near center prompt point
+  let seedX = cx, seedY = cy;
+  if (maskData[cy * W + cx] !== 1) {
+    let found = false;
+    for (let r = 1; r < 60 && !found; r++) {
+      for (let dy = -r; dy <= r && !found; dy++) {
+        for (let dx = -r; dx <= r && !found; dx++) {
+          const px = cx + dx, py = cy + dy;
+          if (px >= 4 && px < W - 4 && py >= 4 && py < H - 4 && maskData[py * W + px] === 1) {
+            seedX = px;
+            seedY = py;
+            found = true;
+          }
+        }
+      }
+    }
+    if (!found) return null;
+  }
+
+  // Flood fill to isolate ONLY the connected component containing the target object.
+  // This cleanly discards all isolated noise islands, background artifacts, or stray shadow pixels.
+  const cleanMask = new Uint8Array(W * H);
+  const queue = [seedY * W + seedX];
+  cleanMask[seedY * W + seedX] = 1;
+  let head = 0;
+  let startX = seedX, startY = seedY;
+
+  while (head < queue.length) {
+    const idx = queue[head++];
+    const x = idx % W;
+    const y = Math.floor(idx / W);
+
+    // Track top-most pixel of the object for Moore-Neighbor start
+    if (y < startY || (y === startY && x < startX)) {
+      startX = x;
+      startY = y;
+    }
+
+    const nbs = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+    for (let i = 0; i < 4; i++) {
+      const nx = nbs[i][0], ny = nbs[i][1];
+      if (nx >= 2 && nx < W - 2 && ny >= 2 && ny < H - 2) {
+        const nidx = ny * W + nx;
+        if (cleanMask[nidx] === 0 && maskData[nidx] === 1) {
+          cleanMask[nidx] = 1;
+          queue.push(nidx);
+        }
       }
     }
   }
 
-  if (startX === -1) return null;
+  // Reject tiny noise (< 40 pixels)
+  if (queue.length < 40) return null;
 
   const dirs = [
     [0, -1], [1, -1], [1, 0], [1, 1],
@@ -52,7 +104,7 @@ function extractSamPolygon(maskData, W, H) {
       const checkDir = (startScan + i) % 8;
       const nx = currX + dirs[checkDir][0];
       const ny = currY + dirs[checkDir][1];
-      if (nx >= 0 && nx < W && ny >= 0 && ny < H && maskData[ny * W + nx] === 1) {
+      if (nx >= 0 && nx < W && ny >= 0 && ny < H && cleanMask[ny * W + nx] === 1) {
         currX = nx;
         currY = ny;
         dir = checkDir;
@@ -175,17 +227,18 @@ self.onmessage = async (e) => {
       const outputs = await samModel(inputs);
       const masks = await samProcessor.post_process_masks(outputs.pred_masks, inputs.original_sizes, inputs.reshaped_input_sizes);
 
-      // Select mask with highest IoU confidence score
+      // Select mask: SAM outputs [0: whole scene, 1: object body, 2: subpart]
+      // Mask 1 represents the focused object without surrounding context/background noise
       const scores = outputs.iou_scores.data;
-      let bestIdx = 0;
-      for (let i = 1; i < scores.length; i++) {
-        if (scores[i] > scores[bestIdx]) bestIdx = i;
+      let chosenIdx = 1;
+      if (scores[1] < 0.65) {
+        chosenIdx = scores[0] > scores[2] ? 0 : 2;
       }
 
-      const rawMask = masks[0].data.subarray(bestIdx * width * height, (bestIdx + 1) * width * height);
+      const rawMask = masks[0].data.subarray(chosenIdx * width * height, (chosenIdx + 1) * width * height);
       const polygon = extractSamPolygon(rawMask, width, height);
 
-      self.postMessage({ type: 'segment_result', reqId, polygon, iou: scores[bestIdx] });
+      self.postMessage({ type: 'segment_result', reqId, polygon, iou: scores[chosenIdx] });
     } catch (err) {
       console.error('SlimSAM Error:', err);
       self.postMessage({ type: 'segment_result', reqId, polygon: null });

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'visionid-v1';
+const CACHE_NAME = 'visionid-v2';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -9,6 +9,7 @@ const ASSETS_TO_CACHE = [
   './js/contour-fast.js',
   './js/matcher.js',
   './js/db.js',
+  './js/transformers.min.js',
   './js/worker.js'
 ];
 
