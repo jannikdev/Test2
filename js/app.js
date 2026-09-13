@@ -79,7 +79,7 @@ class VisionIDApp {
     // Show initial loading banner
     if (loadingBanner) loadingBanner.classList.remove('hidden');
 
-    this.worker = new Worker(new URL('./worker.js?v=2.2', import.meta.url));
+    this.worker = new Worker(new URL('./worker.js?v=2.3', import.meta.url));
 
     this.worker.onerror = (err) => {
       console.error('Worker-Fehler:', err);

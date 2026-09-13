@@ -7,12 +7,15 @@
 
 /* global importScripts */
 
-// Load transformers library: try local bundle first with cache-busting, then fallbacks
+// Load transformers library: local bundle first, then CDNs
+const workerBase = (typeof self !== 'undefined' && self.location)
+  ? self.location.href.substring(0, self.location.href.lastIndexOf('/') + 1)
+  : './';
+
 const scriptCandidates = [
-  './transformers.min.js?v=2.17.2',
-  './transformers.min.js',
-  'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js',
-  'https://unpkg.com/@xenova/transformers@2.17.2/dist/transformers.min.js'
+  workerBase + 'transformers.min.js?v=2.17.3',
+  './transformers.min.js?v=2.17.3',
+  './transformers.min.js'
 ];
 
 for (const src of scriptCandidates) {
@@ -29,12 +32,12 @@ for (const src of scriptCandidates) {
 }
 
 if (!self.transformers) {
-  throw new Error('Konnte transformers.min.js weder lokal noch über CDNs laden.');
+  throw new Error('Konnte transformers.min.js lokal nicht laden.');
 }
 
 const { pipeline, env, RawImage, SamModel, AutoProcessor } = self.transformers;
 env.allowLocalModels = false;
-env.backends.onnx.wasm.wasmPaths = './';
+env.backends.onnx.wasm.wasmPaths = workerBase;
 env.backends.onnx.wasm.numThreads = 1;
 
 let featureExtractor = null;
