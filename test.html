@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VisionID — Kontur-Benchmark (20 Test-Objekte)</title>
+  <title>VisionID — Modell-Vergleich (Heuristik vs. SlimSAM KI)</title>
   <link rel="stylesheet" href="./css/app.css">
   <style>
     body {
       overflow-y: auto;
       height: auto;
       padding: 24px 16px;
-      max-width: 1200px;
+      max-width: 1280px;
       margin: 0 auto;
     }
     .header-bar {
@@ -19,7 +19,36 @@
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 16px;
+    }
+    .view-switcher {
+      display: flex;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-full);
+      padding: 4px;
+      gap: 4px;
+    }
+    .view-switcher button {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    .view-switcher button.active {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      font-weight: 600;
+    }
+    .view-switcher button.sam.active {
+      background: rgba(16, 185, 129, 0.25);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(16, 185, 129, 0.4);
     }
     .gallery-grid {
       display: grid;
@@ -33,28 +62,27 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      transition: transform 0.2s ease;
+    }
+    .card:hover {
+      transform: translateY(-2px);
     }
     .card-img-wrap {
       position: relative;
       width: 100%;
       aspect-ratio: 1;
       background: #000;
-      cursor: pointer;
     }
     .card-img-wrap img {
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
       object-fit: cover;
-      display: block;
+      opacity: 0;
       transition: opacity 0.2s ease;
     }
-    .card-img-wrap img.raw {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-    }
-    .card-img-wrap:hover img.raw,
-    .card-img-wrap.show-raw img.raw {
+    .card-img-wrap img.active {
       opacity: 1;
     }
     .card-meta {
@@ -71,17 +99,16 @@
     .card-badge {
       font-size: 11px;
       font-family: var(--font-mono);
-      background: rgba(56, 189, 248, 0.15);
-      color: var(--accent-cyan);
       padding: 3px 8px;
       border-radius: 6px;
     }
-    .hint-pill {
-      font-size: 11px;
-      color: var(--text-muted);
-      background: rgba(255, 255, 255, 0.05);
-      padding: 6px 12px;
-      border-radius: var(--radius-full);
+    .badge-sam {
+      background: rgba(52, 211, 153, 0.15);
+      color: var(--accent-emerald);
+    }
+    .badge-fast {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-cyan);
     }
   </style>
 </head>
@@ -89,63 +116,83 @@
 
   <header class="header-bar">
     <div>
-      <h1 style="font-size: 20px; font-weight: 700; color: #fff;">VisionID — Kontur-Benchmark</h1>
+      <h1 style="font-size: 22px; font-weight: 700; color: #fff;">VisionID — Modell-Vergleich</h1>
       <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
-        20 reale Alltagsgegenstände mit berechneten Vektorumrissen (Hover/Klick zeigt Originalbild)
+        Vergleich: Originalbild vs. Schnelle Heuristik vs. <strong>SlimSAM (Segment Anything)</strong>
       </p>
     </div>
-    <div style="display: flex; gap: 10px; align-items: center;">
-      <span class="hint-pill">Tippe auf ein Bild für Original / Kontur</span>
-      <a href="./index.html" class="btn-primary" style="padding: 8px 16px; font-size: 12px; text-decoration: none; width: auto;">
-        Zur Live-App
-      </a>
+
+    <!-- Mode Switcher -->
+    <div class="view-switcher">
+      <button id="btn-show-raw" onclick="setMode('raw')">Original</button>
+      <button id="btn-show-fast" onclick="setMode('fast')">Heuristik (60fps)</button>
+      <button id="btn-show-sam" class="sam active" onclick="setMode('sam')">SlimSAM KI (Pixel-genau)</button>
     </div>
+
+    <a href="./index.html" class="btn-primary" style="padding: 8px 16px; font-size: 12px; text-decoration: none; width: auto;">
+      Zur Live-App
+    </a>
   </header>
 
   <main class="gallery-grid" id="gallery"></main>
 
   <script>
     const items = [
-      { id: 1, name: "Kaffeebecher", pts: 48 },
-      { id: 2, name: "Schraubenschlüssel", pts: 48 },
-      { id: 3, name: "Schere", pts: 33 },
-      { id: 4, name: "Smartphone", pts: 48 },
-      { id: 5, name: "Armbanduhr", pts: 48 },
-      { id: 6, name: "Apfel", pts: 48 },
-      { id: 7, name: "Sonnenbrille", pts: 48 },
-      { id: 8, name: "Kopfhörer", pts: 48 },
-      { id: 9, name: "Sneaker", pts: 48 },
-      { id: 10, name: "Buch", pts: 48 },
-      { id: 11, name: "Heftgerät", pts: 38 },
-      { id: 12, name: "Vase", pts: 48 },
-      { id: 13, name: "Hammer", pts: 48 },
-      { id: 14, name: "Schlüssel", pts: 48 },
-      { id: 15, name: "Trinkflasche", pts: 48 },
-      { id: 16, name: "Computermaus", pts: 48 },
-      { id: 17, name: "Banane", pts: 48 },
-      { id: 18, name: "Glühbirne", pts: 48 },
-      { id: 19, name: "Parfümflasche", pts: 48 },
-      { id: 20, name: "Schraubendreher", pts: 42 }
+      { id: 1, name: "Kaffeebecher", samIou: "93.1%" },
+      { id: 2, name: "Schraubenschlüssel", samIou: "90.1%" },
+      { id: 3, name: "Schere", samIou: "93.0%" },
+      { id: 4, name: "Smartphone", samIou: "98.4%" },
+      { id: 5, name: "Armbanduhr", samIou: "96.8%" },
+      { id: 6, name: "Apfel", samIou: "96.2%" },
+      { id: 7, name: "Sonnenbrille", samIou: "95.7%" },
+      { id: 8, name: "Kopfhörer", samIou: "92.8%" },
+      { id: 9, name: "Sneaker", samIou: "99.0%" },
+      { id: 10, name: "Buch", samIou: "94.6%" },
+      { id: 11, name: "Heftgerät", samIou: "98.1%" },
+      { id: 12, name: "Vase", samIou: "96.6%" },
+      { id: 13, name: "Hammer", samIou: "97.2%" },
+      { id: 14, name: "Schlüssel", samIou: "87.5%" },
+      { id: 15, name: "Trinkflasche", samIou: "99.2%" },
+      { id: 16, name: "Computermaus", samIou: "90.2%" },
+      { id: 17, name: "Banane", samIou: "93.7%" },
+      { id: 18, name: "Glühbirne", samIou: "92.5%" },
+      { id: 19, name: "Parfümflasche", samIou: "82.2%" },
+      { id: 20, name: "Schraubendreher", samIou: "96.2%" }
     ];
 
-    const gallery = document.getElementById('gallery');
-    gallery.innerHTML = items.map(item => {
-      const padId = String(item.id).padStart(2, '0');
-      return `
-        <div class="card">
-          <div class="card-img-wrap" onclick="this.classList.toggle('show-raw')">
-            <img src="./test-data/contoured_${padId}.jpg" alt="${item.name} mit Kontur">
-            <img src="./test-data/raw_${padId}.jpg" class="raw" alt="${item.name} Original">
-          </div>
-          <div class="card-meta">
-            <div>
-              <div class="card-name">${item.id}. ${item.name}</div>
+    let currentMode = 'sam';
+
+    function renderGallery() {
+      const gallery = document.getElementById('gallery');
+      gallery.innerHTML = items.map(item => {
+        const pad = String(item.id).padStart(2, '0');
+        return `
+          <div class="card">
+            <div class="card-img-wrap">
+              <img src="./test-data/raw_${pad}.jpg" class="${currentMode === 'raw' ? 'active' : ''}" alt="${item.name} Raw">
+              <img src="./test-data/contoured_${pad}.jpg" class="${currentMode === 'fast' ? 'active' : ''}" alt="${item.name} Fast">
+              <img src="./test-data/sam_${pad}.jpg" class="${currentMode === 'sam' ? 'active' : ''}" alt="${item.name} SAM">
             </div>
-            <span class="card-badge">${item.pts} Konturpunkte</span>
+            <div class="card-meta">
+              <div class="card-name">${item.id}. ${item.name}</div>
+              <span class="card-badge ${currentMode === 'sam' ? 'badge-sam' : 'badge-fast'}">
+                ${currentMode === 'sam' ? 'SlimSAM: ' + item.samIou : (currentMode === 'fast' ? 'Heuristik' : 'Original')}
+              </span>
+            </div>
           </div>
-        </div>
-      `;
-    }).join('');
+        `;
+      }).join('');
+    }
+
+    window.setMode = function(mode) {
+      currentMode = mode;
+      document.getElementById('btn-show-raw').classList.toggle('active', mode === 'raw');
+      document.getElementById('btn-show-fast').classList.toggle('active', mode === 'fast');
+      document.getElementById('btn-show-sam').classList.toggle('active', mode === 'sam');
+      renderGallery();
+    };
+
+    renderGallery();
   </script>
 </body>
 </html>
