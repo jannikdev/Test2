@@ -580,9 +580,6 @@ class VisionIDApp {
     document.getElementById('btn-contour-fast')?.addEventListener('click', () => this.setContourMode('fast'));
     document.getElementById('btn-contour-neural')?.addEventListener('click', () => this.setContourMode('neural'));
 
-    // Camera Flip
-    document.getElementById('btn-flip-camera')?.addEventListener('click', () => this.camera.flipCamera());
-
     // User gesture video unpause listener (desktop & mobile autoplay policy)
     const unlockCamera = () => {
       if (this.videoEl && this.videoEl.paused && this.videoEl.srcObject) {

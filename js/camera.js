@@ -10,7 +10,6 @@ export class CameraManager {
     this.canvas = canvasElement;
     this.ctx = canvasElement.getContext('2d');
     this.stream = null;
-    this.facingMode = 'environment';
     this.cropCanvas = document.createElement('canvas');
     this.cropCtx = this.cropCanvas.getContext('2d', { willReadFrequently: true });
   }
@@ -29,10 +28,11 @@ export class CameraManager {
     this.video.setAttribute('muted', 'true');
     this.video.setAttribute('autoplay', 'true');
 
+    // Main rear camera ('environment') on mobile devices
     const constraints = {
       audio: false,
       video: {
-        facingMode: this.facingMode === 'environment' ? { ideal: 'environment' } : 'user',
+        facingMode: { ideal: 'environment' },
         width: { ideal: 1280 },
         height: { ideal: 720 }
       }
@@ -42,7 +42,7 @@ export class CameraManager {
     try {
       stream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch (err) {
-      console.warn('Primäre Kamera-Constraints fehlgeschlagen, versuche einfachen Fallback...', err);
+      console.warn('Primäre Hauptkamera-Constraints fehlgeschlagen, versuche Standard-Fallback...', err);
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       } catch (e) {
@@ -98,11 +98,6 @@ export class CameraManager {
       this.stream.getTracks().forEach(t => t.stop());
       this.stream = null;
     }
-  }
-
-  async flipCamera() {
-    this.facingMode = this.facingMode === 'environment' ? 'user' : 'environment';
-    return await this.start();
   }
 
   syncCanvasDimensions() {
