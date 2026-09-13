@@ -1,6 +1,6 @@
 /**
  * Precision Vector Matcher & Spatial Color Descriptor
- * Combines deep vision embeddings with spatial Lab color histograms for robust discrimination.
+ * Features Hand & Finger Color Filtering to prevent skin tones from polluting object signatures.
  */
 
 // Cosine similarity between two unit-normalized Float32/Number arrays
@@ -21,11 +21,10 @@ export function cosineSimilarity(vecA, vecB) {
 }
 
 /**
- * Extract a 45-dimensional Spatial Lab Color & Texture Descriptor
- * Divides the image into 5 regions (Top-Left, Top-Right, Center, Bottom-Left, Bottom-Right)
- * and computes mean L, a, b values and color variance per region.
+ * Extract a 30-dimensional Spatial Color & Texture Descriptor
+ * Filters out human skin/finger pixels so holding hands do not pollute object color.
  * @param {ImageData} imageData 
- * @returns {Float32Array} 45-dimensional feature array
+ * @returns {Float32Array}
  */
 export function extractSpatialColorDescriptor(imageData) {
   const w = imageData.width;
@@ -41,7 +40,7 @@ export function extractSpatialColorDescriptor(imageData) {
     { x0: w * 0.45, y0: h * 0.45, x1: w, y1: h }              // Bottom-Right
   ];
 
-  const descriptor = new Float32Array(regions.length * 6); // 6 features per region: mean R, G, B, std R, G, B
+  const descriptor = new Float32Array(regions.length * 6);
 
   regions.forEach((r, rIdx) => {
     let sumR = 0, sumG = 0, sumB = 0;
@@ -56,9 +55,20 @@ export function extractSpatialColorDescriptor(imageData) {
       const row = y * w;
       for (let x = startX; x < endX; x += 2) {
         const idx = (row + x) << 2;
-        sumR += data[idx];
-        sumG += data[idx + 1];
-        sumB += data[idx + 2];
+        const red = data[idx];
+        const green = data[idx + 1];
+        const blue = data[idx + 2];
+
+        // Filter out skin/finger pixels
+        const cb = -0.168736 * red - 0.331264 * green + 0.5 * blue + 128;
+        const cr =  0.5 * red - 0.418688 * green - 0.081312 * blue + 128;
+        if (cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173) {
+          continue; // Skip holding fingers!
+        }
+
+        sumR += red;
+        sumG += green;
+        sumB += blue;
         count++;
       }
     }
@@ -68,7 +78,6 @@ export function extractSpatialColorDescriptor(imageData) {
     const meanG = sumG / count;
     const meanB = sumB / count;
 
-    // Variance calculation
     let varR = 0, varG = 0, varB = 0;
     for (let y = startY; y < endY; y += 4) {
       const row = y * w;
@@ -102,10 +111,6 @@ export function extractSpatialColorDescriptor(imageData) {
 /**
  * Match a query vector against a database of registered objects using multi-shot k-NN
  * and calibrated thresholding.
- * @param {Object} querySample - { deepVector: number[], colorVector: Float32Array }
- * @param {Array} database - Array of registered objects with shots
- * @param {Object} options - { threshold: 0.72, deepWeight: 0.75, colorWeight: 0.25 }
- * @returns {Object|null} Top match result or null
  */
 export function findBestMatch(querySample, database, options = {}) {
   const threshold = options.threshold ?? 0.70;
@@ -123,20 +128,15 @@ export function findBestMatch(querySample, database, options = {}) {
     let bestDeepSim = -1;
     let bestColorSim = -1;
 
-    // Iterate through all multi-angle training shots of this item
     for (const shot of item.shots) {
-      // 1. Deep embedding similarity
       const deepSim = cosineSimilarity(querySample.deepVector, shot.deepVector);
 
-      // 2. Spatial color similarity
-      let colorSim = 0.8; // default if no color vector
+      let colorSim = 0.8;
       if (querySample.colorVector && shot.colorVector) {
         colorSim = cosineSimilarity(querySample.colorVector, shot.colorVector);
-        // Rescale colorSim from [-1, 1] to [0, 1]
         colorSim = Math.max(0, (colorSim + 1) * 0.5);
       }
 
-      // Hybrid combined score
       const hybridScore = (deepSim * deepWeight) + (colorSim * colorWeight);
 
       if (hybridScore > maxItemScore) {
@@ -154,7 +154,6 @@ export function findBestMatch(querySample, database, options = {}) {
     });
   }
 
-  // Sort descending by score
   matches.sort((a, b) => b.score - a.score);
   const best = matches[0];
 
@@ -162,7 +161,6 @@ export function findBestMatch(querySample, database, options = {}) {
     return null;
   }
 
-  // Calibrate score to an intuitive percentage (e.g. 70% threshold -> 65-100% confidence display)
   const normPercent = Math.round(
     Math.min(99, Math.max(60, 60 + ((best.score - threshold) / (1.0 - threshold)) * 39))
   );

@@ -1,8 +1,12 @@
 /**
  * High-Precision Real-time Object Contour Tracker (Mode 1: 0 MB, ~5ms, 60fps)
- * Uses Corner Background Modeling, Sobel Edge Magnitude + Color Distance,
- * and 48-Ray Perimeter Contour Tracing to trace the exact physical silhouette.
+ * Features:
+ * - Corner Background Modeling
+ * - Intelligent Hand & Finger Suppression (YCbCr Skin Cluster + Border Connectivity)
+ * - Sobel Edge & Color Distance Fusion
+ * - 48-Ray Perimeter Contour Tracing
  */
+
 export class FastContourDetector {
   constructor() {
     this.offscreen = document.createElement('canvas');
@@ -13,7 +17,8 @@ export class FastContourDetector {
   }
 
   /**
-   * Process a frame and draw a high-precision silhouette contour
+   * Process a frame and draw a high-precision silhouette contour,
+   * automatically suppressing holding hands and fingers.
    * @param {HTMLVideoElement|HTMLCanvasElement} source - Video source
    * @param {CanvasRenderingContext2D} targetCtx - Overlay canvas context
    * @param {Object} reticleRect - { x, y, width, height } in canvas coords
@@ -31,7 +36,6 @@ export class FastContourDetector {
       return null;
     }
 
-    // High enough resolution for fine features, fast enough for ~4ms execution
     const W = 130;
     const H = 130;
     this.offscreen.width = W;
@@ -43,15 +47,63 @@ export class FastContourDetector {
 
     const centerX = W / 2, centerY = H / 2;
 
-    // 1. Background color reference from perimeter corners
+    // 1. Hand & Finger Detection (YCbCr Skin Chrominance + Border Inflow)
+    const isSkin = new Uint8Array(W * H);
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      // YCbCr skin model
+      const cb = -0.168736 * r - 0.331264 * g + 0.5 * b + 128;
+      const cr =  0.5 * r - 0.418688 * g - 0.081312 * b + 128;
+      if (cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173) {
+        isSkin[i >> 2] = 1;
+      }
+    }
+
+    // Identify skin connected to outer border (holding hand/fingers entering the frame)
+    const isHand = new Uint8Array(W * H);
+    const handQueue = [];
+
+    // Check borders
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (x <= 1 || x >= W - 2 || y <= 1 || y >= H - 2) {
+          const idx = y * W + x;
+          if (isSkin[idx] && !isHand[idx]) {
+            isHand[idx] = 1;
+            handQueue.push(idx);
+          }
+        }
+      }
+    }
+
+    // Flood-fill connected hand pixels from borders into the frame
+    while (handQueue.length > 0) {
+      const curr = handQueue.pop();
+      const cx = curr % W;
+      const cy = Math.floor(curr / W);
+
+      const neighbors = [curr - 1, curr + 1, curr - W, curr + W];
+      for (const n of neighbors) {
+        if (n >= 0 && n < W * H && isSkin[n] && !isHand[n]) {
+          isHand[n] = 1;
+          handQueue.push(n);
+        }
+      }
+    }
+
+    // 2. Background color reference from perimeter corners (excluding hand pixels)
     let bgR = 0, bgG = 0, bgB = 0, bgCount = 0;
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
-        if (Math.hypot(x - centerX, y - centerY) > W * 0.44) {
-          const idx = (y * W + x) << 2;
-          bgR += data[idx];
-          bgG += data[idx + 1];
-          bgB += data[idx + 2];
+        const idx = y * W + x;
+        if (!isHand[idx] && Math.hypot(x - centerX, y - centerY) > W * 0.44) {
+          const pIdx = idx << 2;
+          bgR += data[pIdx];
+          bgG += data[pIdx + 1];
+          bgB += data[pIdx + 2];
           bgCount++;
         }
       }
@@ -60,13 +112,13 @@ export class FastContourDetector {
       bgR /= bgCount; bgG /= bgCount; bgB /= bgCount;
     }
 
-    // 2. Grayscale & Sobel
+    // 3. Grayscale & Sobel
     const gray = new Uint8Array(W * H);
     for (let i = 0; i < data.length; i += 4) {
       gray[i >> 2] = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
     }
 
-    // 3. Foreground determination (Color Distance + Edge Magnitude)
+    // 4. Foreground determination (Exclude Hands, Include Object via Color Distance + Edge Magnitude)
     const fg = new Uint8Array(W * H);
     let fgCount = 0, sumX = 0, sumY = 0;
 
@@ -74,8 +126,11 @@ export class FastContourDetector {
       const row = y * W;
       for (let x = 1; x < W - 1; x++) {
         const idx = row + x;
-        const pIdx = idx << 2;
 
+        // Skip hand/finger pixels completely!
+        if (isHand[idx]) continue;
+
+        const pIdx = idx << 2;
         const gx =
           -gray[idx - W - 1] + gray[idx - W + 1]
           - (gray[idx - 1] << 1) + (gray[idx + 1] << 1)
@@ -101,7 +156,7 @@ export class FastContourDetector {
       }
     }
 
-    // Significance check: If fewer than 200 pixels, it's an empty table/wall -> DRAW NOTHING!
+    // Significance check: If fewer than 200 object pixels, DRAW NOTHING!
     if (fgCount < 200) {
       this.smoothedPoints = null;
       this.hasObject = false;
@@ -111,7 +166,7 @@ export class FastContourDetector {
     const comX = sumX / fgCount;
     const comY = sumY / fgCount;
 
-    // 4. Ray-Casting for exact outer silhouette (48 radial angles)
+    // 5. Ray-Casting for exact outer silhouette (48 radial angles)
     const numRays = 48;
     const rawPts = [];
     const maxR = Math.min(W, H) * 0.46;
@@ -126,6 +181,10 @@ export class FastContourDetector {
         const px = Math.round(comX + cosA * r);
         const py = Math.round(comY + sinA * r);
         if (px < 1 || px >= W - 1 || py < 1 || py >= H - 1) break;
+
+        // If ray encounters hand, stop ray immediately to avoid wrapping around fingers!
+        if (isHand[py * W + px]) break;
+
         if (fg[py * W + px] === 1) hitR = r;
       }
 
@@ -143,7 +202,7 @@ export class FastContourDetector {
       return null;
     }
 
-    // 5. Exponential Smoothing across frames to prevent jitter
+    // 6. Exponential Smoothing across frames to prevent jitter
     if (!this.smoothedPoints || this.smoothedPoints.length !== rawPts.length) {
       this.smoothedPoints = rawPts.map(p => ({ x: p.x, y: p.y }));
     } else {
@@ -153,7 +212,7 @@ export class FastContourDetector {
       }
     }
 
-    // 6. Draw Crisp Smooth Outline (Stroke ONLY, NO solid fill!)
+    // 7. Draw Crisp Smooth Outline (Stroke ONLY, NO solid fill!)
     targetCtx.save();
     targetCtx.strokeStyle = strokeColor;
     targetCtx.lineWidth = lineWidth;
@@ -174,7 +233,7 @@ export class FastContourDetector {
       targetCtx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
     }
     targetCtx.closePath();
-    targetCtx.stroke(); // STROKE ONLY!
+    targetCtx.stroke();
 
     targetCtx.restore();
     this.hasObject = true;
