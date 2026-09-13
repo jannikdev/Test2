@@ -1,7 +1,7 @@
 /**
  * Background AI Inference Worker
  * Runs DINOv2 (~23MB quantized) for visual feature representation
- * Uses RawImage RGB buffers to ensure 100% mobile browser compatibility.
+ * Runs SegFormer for true neural object mask segmentation
  */
 
 /* global importScripts */
@@ -11,12 +11,69 @@ importScripts('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/tra
 const { pipeline, env, RawImage } = self.transformers;
 env.allowLocalModels = false;
 env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/';
-// CRITICAL: numThreads = 1 prevents SharedArrayBuffer crashes on GitHub Pages / Mobile
-env.backends.onnx.wasm.numThreads = 1;
+env.backends.onnx.wasm.numThreads = 1; // Single-thread WASM for 100% mobile compatibility
 
 let featureExtractor = null;
 let neuralSegmenter = null;
 let isSegmenterLoading = false;
+
+// Boundary tracing for neural mask
+function traceMaskBoundary(maskData, w, h) {
+  let startX = -1, startY = -1;
+  // Look for top-most mask pixel near center
+  for (let y = 8; y < h - 8 && startX === -1; y++) {
+    for (let x = 8; x < w - 8; x++) {
+      if (maskData[y * w + x] > 128) {
+        startX = x;
+        startY = y;
+        break;
+      }
+    }
+  }
+  if (startX === -1) return null;
+
+  const dirs = [
+    [-1, 0], [-1, -1], [0, -1], [1, -1],
+    [1, 0], [1, 1], [0, 1], [-1, 1]
+  ];
+
+  const points = [];
+  let currX = startX;
+  let currY = startY;
+  let dirIdx = 7;
+  let steps = 0;
+
+  do {
+    // Return normalized coordinates [0.0, 1.0]
+    points.push({ x: currX / w, y: currY / h });
+
+    let foundNext = false;
+    for (let i = 0; i < 8; i++) {
+      const checkDir = (dirIdx + i) % 8;
+      const nx = currX + dirs[checkDir][0];
+      const ny = currY + dirs[checkDir][1];
+      if (nx >= 0 && nx < w && ny >= 0 && ny < h && maskData[ny * w + nx] > 128) {
+        currX = nx;
+        currY = ny;
+        dirIdx = (checkDir + 5) % 8;
+        foundNext = true;
+        break;
+      }
+    }
+
+    if (!foundNext) break;
+    steps++;
+  } while ((currX !== startX || currY !== startY) && steps < 500);
+
+  // Subsample to ~35-45 clean points
+  if (points.length < 10) return null;
+  const step = Math.max(1, Math.floor(points.length / 40));
+  const subsampled = [];
+  for (let i = 0; i < points.length; i += step) {
+    subsampled.push(points[i]);
+  }
+  return subsampled;
+}
 
 self.onmessage = async (e) => {
   const { type, reqId, buffer, width, height } = e.data;
@@ -67,7 +124,7 @@ self.onmessage = async (e) => {
       });
       self.postMessage({ type: 'segmenter_ready' });
     } catch (segErr) {
-      console.warn('KI-Segmentierer konnte nicht geladen werden:', segErr);
+      console.warn('KI-Segmentierer Fehler:', segErr);
       self.postMessage({ type: 'segmenter_error', error: segErr.message });
     } finally {
       isSegmenterLoading = false;
@@ -84,7 +141,7 @@ self.onmessage = async (e) => {
       const raw = new RawImage(new Uint8Array(buffer), width, height, 3);
       const output = await featureExtractor(raw);
 
-      // Slice out the 384-dimensional CLS token
+      // Extract 384-dim CLS token
       const cls = output.slice(0, 0).data;
 
       // L2 Normalization
@@ -107,7 +164,7 @@ self.onmessage = async (e) => {
 
   else if (type === 'segment') {
     if (!neuralSegmenter || !buffer) {
-      self.postMessage({ type: 'segment_result', reqId, mask: null });
+      self.postMessage({ type: 'segment_result', reqId, polygon: null });
       return;
     }
 
@@ -115,11 +172,31 @@ self.onmessage = async (e) => {
       const raw = new RawImage(new Uint8Array(buffer), width, height, 3);
       const output = await neuralSegmenter(raw);
 
-      // Extract detected foreground segments
-      self.postMessage({ type: 'segment_result', reqId, segments: output });
+      // Find foreground object segment
+      const bgLabels = ['wall', 'floor', 'ceiling', 'sky', 'ground', 'earth', 'mountain'];
+      let bestSegment = null;
+      let maxScore = -1;
+
+      for (const seg of output) {
+        if (!bgLabels.includes(seg.label.toLowerCase()) && seg.score > maxScore) {
+          maxScore = seg.score;
+          bestSegment = seg;
+        }
+      }
+
+      if (!bestSegment && output.length > 0) {
+        bestSegment = output[0];
+      }
+
+      if (bestSegment && bestSegment.mask) {
+        const polygon = traceMaskBoundary(bestSegment.mask.data, bestSegment.mask.width, bestSegment.mask.height);
+        self.postMessage({ type: 'segment_result', reqId, polygon });
+      } else {
+        self.postMessage({ type: 'segment_result', reqId, polygon: null });
+      }
     } catch (err) {
       console.error('Segmentation Error:', err);
-      self.postMessage({ type: 'segment_result', reqId, segments: null });
+      self.postMessage({ type: 'segment_result', reqId, polygon: null });
     }
   }
 };

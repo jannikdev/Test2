@@ -47,7 +47,7 @@ class VisionIDApp {
     // Controllers
     this.camera = new CameraManager(this.videoEl, this.overlayCanvas);
     this.fastContour = new FastContourDetector();
-    this.neuralSegments = null;
+    this.neuralPolygon = null;
 
     this.lastInferenceTime = 0;
     this.inferenceInterval = 140; // ~7 FPS inference for stable mobile performance
@@ -115,7 +115,7 @@ class VisionIDApp {
       } else if (data.type === 'segment_result') {
         const resolver = this.pendingRequests.get(data.reqId);
         if (resolver) {
-          resolver(data.segments);
+          resolver(data.polygon);
           this.pendingRequests.delete(data.reqId);
         }
       } else if (data.type === 'error') {
@@ -161,10 +161,10 @@ class VisionIDApp {
     }
 
     if (this.contourMode === 'fast') {
-      // Draws ONLY a crisp outline when an object is in view; otherwise draws nothing!
+      // High-precision Moore-Neighbor boundary tracing (no solid fill)
       this.fastContour.detectAndDraw(this.videoEl, this.overlayCtx, coords, contourColor, 2);
-    } else if (this.contourMode === 'neural' && this.neuralSegments) {
-      this.renderNeuralBoundingBox(coords, contourColor);
+    } else if (this.contourMode === 'neural') {
+      this.renderNeuralMask(coords, contourColor);
     }
 
     // 2. Trigger async inference if ready and interval elapsed
@@ -202,7 +202,7 @@ class VisionIDApp {
         this.handleMatchResult(match);
       }
 
-      // If neural segmentation mode is active, fetch segmentation occasionally
+      // If neural segmentation mode is active, fetch segmentation polygon
       if (this.contourMode === 'neural' && this.isSegmenterReady && !this.isSegmenting) {
         this.fetchNeuralSegments(coords);
       }
@@ -223,7 +223,7 @@ class VisionIDApp {
         { type: 'segment', reqId, buffer: crop.buffer, width: crop.width, height: crop.height },
         [crop.buffer]
       );
-      this.neuralSegments = await segmentPromise;
+      this.neuralPolygon = await segmentPromise;
     } catch (e) {
       // ignore
     } finally {
@@ -231,12 +231,33 @@ class VisionIDApp {
     }
   }
 
-  renderNeuralBoundingBox(coords, color) {
-    // Render clean neural contour box around the object
+  renderNeuralMask(coords, color) {
+    if (!this.neuralPolygon || this.neuralPolygon.length < 3) return;
+
     this.overlayCtx.save();
     this.overlayCtx.strokeStyle = color;
-    this.overlayCtx.lineWidth = 2;
-    this.overlayCtx.strokeRect(coords.x + 6, coords.y + 6, coords.width - 12, coords.height - 12);
+    this.overlayCtx.lineWidth = 2.2;
+    this.overlayCtx.lineJoin = 'round';
+    this.overlayCtx.lineCap = 'round';
+    this.overlayCtx.shadowColor = color;
+    this.overlayCtx.shadowBlur = 6;
+
+    this.overlayCtx.beginPath();
+    const pts = this.neuralPolygon;
+    const len = pts.length;
+
+    const startX = coords.x + pts[0].x * coords.width;
+    const startY = coords.y + pts[0].y * coords.height;
+    this.overlayCtx.moveTo(startX, startY);
+
+    for (let i = 1; i < len; i++) {
+      const px = coords.x + pts[i].x * coords.width;
+      const py = coords.y + pts[i].y * coords.height;
+      this.overlayCtx.lineTo(px, py);
+    }
+
+    this.overlayCtx.closePath();
+    this.overlayCtx.stroke();
     this.overlayCtx.restore();
   }
 
@@ -301,7 +322,7 @@ class VisionIDApp {
     }
   }
 
-  // --- Training Flow (Fixes black screen bug!) ---
+  // --- Training Flow ---
   renderTrainFrame() {
     const trainCanvas = document.getElementById('train-overlay-canvas');
     if (!trainCanvas || this.videoEl.readyState < 2) return;
@@ -311,10 +332,10 @@ class VisionIDApp {
     trainCanvas.width = w;
     trainCanvas.height = h;
 
-    // 1. DRAW LIVE CAMERA STREAM! (Fixes black screen in training tab!)
+    // 1. Live camera feed
     ctx.drawImage(this.videoEl, 0, 0, w, h);
 
-    // 2. Draw subtle target reticle
+    // 2. Target reticle
     const rw = w * 0.7;
     const rh = h * 0.7;
     const rx = (w - rw) / 2;
@@ -327,7 +348,7 @@ class VisionIDApp {
     ctx.strokeRect(rx, ry, rw, rh);
     ctx.restore();
 
-    // 3. Draw object contour if present
+    // 3. Crisp outline if object present
     this.fastContour.detectAndDraw(this.videoEl, ctx, reticleRect, '#38bdf8', 2);
   }
 
@@ -529,6 +550,7 @@ class VisionIDApp {
     document.getElementById('btn-contour-fast').classList.toggle('active', mode === 'fast');
     document.getElementById('btn-contour-neural').classList.toggle('active', mode === 'neural');
     this.fastContour.reset();
+    this.neuralPolygon = null;
 
     if (mode === 'neural' && !this.isSegmenterReady) {
       const banner = document.getElementById('loading-banner');
