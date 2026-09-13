@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisionID — Kontur-Benchmark (20 Test-Objekte)</title>
+  <link rel="stylesheet" href="./css/app.css">
+  <style>
+    body {
+      overflow-y: auto;
+      height: auto;
+      padding: 24px 16px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .header-bar {
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .card-img-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1;
+      background: #000;
+      cursor: pointer;
+    }
+    .card-img-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: opacity 0.2s ease;
+    }
+    .card-img-wrap img.raw {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+    }
+    .card-img-wrap:hover img.raw,
+    .card-img-wrap.show-raw img.raw {
+      opacity: 1;
+    }
+    .card-meta {
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .card-badge {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-cyan);
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+    .hint-pill {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 6px 12px;
+      border-radius: var(--radius-full);
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header-bar">
+    <div>
+      <h1 style="font-size: 20px; font-weight: 700; color: #fff;">VisionID — Kontur-Benchmark</h1>
+      <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+        20 reale Alltagsgegenstände mit berechneten Vektorumrissen (Hover/Klick zeigt Originalbild)
+      </p>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <span class="hint-pill">Tippe auf ein Bild für Original / Kontur</span>
+      <a href="./index.html" class="btn-primary" style="padding: 8px 16px; font-size: 12px; text-decoration: none; width: auto;">
+        Zur Live-App
+      </a>
+    </div>
+  </header>
+
+  <main class="gallery-grid" id="gallery"></main>
+
+  <script>
+    const items = [
+      { id: 1, name: "Kaffeebecher", pts: 48 },
+      { id: 2, name: "Schraubenschlüssel", pts: 48 },
+      { id: 3, name: "Schere", pts: 33 },
+      { id: 4, name: "Smartphone", pts: 48 },
+      { id: 5, name: "Armbanduhr", pts: 48 },
+      { id: 6, name: "Apfel", pts: 48 },
+      { id: 7, name: "Sonnenbrille", pts: 48 },
+      { id: 8, name: "Kopfhörer", pts: 48 },
+      { id: 9, name: "Sneaker", pts: 48 },
+      { id: 10, name: "Buch", pts: 48 },
+      { id: 11, name: "Heftgerät", pts: 38 },
+      { id: 12, name: "Vase", pts: 48 },
+      { id: 13, name: "Hammer", pts: 48 },
+      { id: 14, name: "Schlüssel", pts: 48 },
+      { id: 15, name: "Trinkflasche", pts: 48 },
+      { id: 16, name: "Computermaus", pts: 48 },
+      { id: 17, name: "Banane", pts: 48 },
+      { id: 18, name: "Glühbirne", pts: 48 },
+      { id: 19, name: "Parfümflasche", pts: 48 },
+      { id: 20, name: "Schraubendreher", pts: 42 }
+    ];
+
+    const gallery = document.getElementById('gallery');
+    gallery.innerHTML = items.map(item => {
+      const padId = String(item.id).padStart(2, '0');
+      return `
+        <div class="card">
+          <div class="card-img-wrap" onclick="this.classList.toggle('show-raw')">
+            <img src="./test-data/contoured_${padId}.jpg" alt="${item.name} mit Kontur">
+            <img src="./test-data/raw_${padId}.jpg" class="raw" alt="${item.name} Original">
+          </div>
+          <div class="card-meta">
+            <div>
+              <div class="card-name">${item.id}. ${item.name}</div>
+            </div>
+            <span class="card-badge">${item.pts} Konturpunkte</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  </script>
+</body>
+</html>

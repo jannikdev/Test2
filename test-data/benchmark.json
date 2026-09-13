@@ -1,0 +1,142 @@
+[
+  {
+    "id": 1,
+    "name": "Kaffeebecher",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_01.jpg",
+    "contouredUrl": "./test-data/contoured_01.jpg"
+  },
+  {
+    "id": 2,
+    "name": "Schraubenschlüssel",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_02.jpg",
+    "contouredUrl": "./test-data/contoured_02.jpg"
+  },
+  {
+    "id": 3,
+    "name": "Schere",
+    "vertices": 33,
+    "rawUrl": "./test-data/raw_03.jpg",
+    "contouredUrl": "./test-data/contoured_03.jpg"
+  },
+  {
+    "id": 4,
+    "name": "Smartphone",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_04.jpg",
+    "contouredUrl": "./test-data/contoured_04.jpg"
+  },
+  {
+    "id": 5,
+    "name": "Armbanduhr",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_05.jpg",
+    "contouredUrl": "./test-data/contoured_05.jpg"
+  },
+  {
+    "id": 6,
+    "name": "Apfel",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_06.jpg",
+    "contouredUrl": "./test-data/contoured_06.jpg"
+  },
+  {
+    "id": 7,
+    "name": "Sonnenbrille",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_07.jpg",
+    "contouredUrl": "./test-data/contoured_07.jpg"
+  },
+  {
+    "id": 8,
+    "name": "Kopfhörer",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_08.jpg",
+    "contouredUrl": "./test-data/contoured_08.jpg"
+  },
+  {
+    "id": 9,
+    "name": "Sneaker",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_09.jpg",
+    "contouredUrl": "./test-data/contoured_09.jpg"
+  },
+  {
+    "id": 10,
+    "name": "Buch",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_10.jpg",
+    "contouredUrl": "./test-data/contoured_10.jpg"
+  },
+  {
+    "id": 11,
+    "name": "Heftgerät",
+    "vertices": 38,
+    "rawUrl": "./test-data/raw_11.jpg",
+    "contouredUrl": "./test-data/contoured_11.jpg"
+  },
+  {
+    "id": 12,
+    "name": "Vase",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_12.jpg",
+    "contouredUrl": "./test-data/contoured_12.jpg"
+  },
+  {
+    "id": 13,
+    "name": "Hammer",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_13.jpg",
+    "contouredUrl": "./test-data/contoured_13.jpg"
+  },
+  {
+    "id": 14,
+    "name": "Schlüssel",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_14.jpg",
+    "contouredUrl": "./test-data/contoured_14.jpg"
+  },
+  {
+    "id": 15,
+    "name": "Trinkflasche",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_15.jpg",
+    "contouredUrl": "./test-data/contoured_15.jpg"
+  },
+  {
+    "id": 16,
+    "name": "Computermaus",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_16.jpg",
+    "contouredUrl": "./test-data/contoured_16.jpg"
+  },
+  {
+    "id": 17,
+    "name": "Banane",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_17.jpg",
+    "contouredUrl": "./test-data/contoured_17.jpg"
+  },
+  {
+    "id": 18,
+    "name": "Glühbirne",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_18.jpg",
+    "contouredUrl": "./test-data/contoured_18.jpg"
+  },
+  {
+    "id": 19,
+    "name": "Parfümflasche",
+    "vertices": 48,
+    "rawUrl": "./test-data/raw_19.jpg",
+    "contouredUrl": "./test-data/contoured_19.jpg"
+  },
+  {
+    "id": 20,
+    "name": "Schraubendreher",
+    "vertices": 42,
+    "rawUrl": "./test-data/raw_20.jpg",
+    "contouredUrl": "./test-data/contoured_20.jpg"
+  }
+]
